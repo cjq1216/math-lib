@@ -1,0 +1,66 @@
+[project]
+name = "math-bank-backend"
+version = "0.1.0"
+description = "初中数学题库与学情分析系统 - 后端"
+authors = [{ name = "CJQ" }]
+requires-python = ">=3.11"
+
+dependencies = [
+    # Web 框架
+    "fastapi>=0.110.0",
+    "uvicorn[standard]>=0.27.0",
+
+    # 数据层
+    "sqlmodel>=0.0.22",
+    "sqlalchemy>=2.0.30",
+    "alembic>=1.13.0",
+    # 生产切换 PostgreSQL 时启用：
+    # "psycopg[binary]>=3.2.0",
+    # "pgvector>=0.3.0",
+
+    # 配置与校验
+    "pydantic>=2.7.0",
+    "pydantic-settings>=2.4.0",
+    "python-multipart>=0.0.9",
+    "email-validator>=2.2.0",
+
+    # 安全 / 认证
+    "python-jose[cryptography]>=3.3.0",
+    "passlib[bcrypt]>=1.7.4",
+    "bcrypt==4.0.1",  # passlib 与新版 bcrypt 兼容性
+
+    # HTTP / LLM
+    "httpx>=0.27.0",
+    "openai>=1.40.0",
+
+    # Excel 导入导出
+    "openpyxl>=3.1.2",
+
+    # 工具
+    "python-dotenv>=1.0.1",
+    "loguru>=0.7.2",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.23.0",
+    "httpx>=0.27.0",
+    "ruff>=0.5.0",
+    "mypy>=1.10.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["app"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "W", "UP", "B", "SIM"]
+ignore = ["E501"]

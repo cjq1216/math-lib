@@ -1,0 +1,57 @@
+# 依赖
+node_modules/
+.pnpm-store/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+env/
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+
+# 数据（不应入库）
+data/
+*.db
+*.sqlite
+*.sqlite3
+backend/data/
+
+# 环境
+.env
+.env.local
+.env.*.local
+
+# 编辑器
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# 构建
+.next/
+out/
+dist/
+build/
+
+# 日志
+*.log
+logs/
+
+# Docker
+docker-compose.override.yml
+
+# 测试
+coverage/
+.coverage
+htmlcov/
+
+# 本地助手工作区
+.workbuddy/
