@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { api } from "@/lib/api";
+import { useAuth } from "@/components/AuthProvider";
 
 export default function LoginPage() {
   const [username, setUsername] = useState("");
@@ -10,22 +10,17 @@ export default function LoginPage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const router = useRouter();
+  const { login } = useAuth();
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError("");
     setLoading(true);
     try {
-      const data = await api<{ access_token: string; real_name: string }>(
-        "/api/v1/auth/login",
-        {
-          method: "POST",
-          body: new URLSearchParams({ username, password }),
-          headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        },
-      );
-      localStorage.setItem("token", data.access_token);
-      router.push("/");
+      await login(username, password);
+      const requested = new URLSearchParams(window.location.search).get("next");
+      const destination = requested?.startsWith("/") && !requested.startsWith("//") ? requested : "/";
+      router.replace(destination);
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "登录失败";
       setError(message);

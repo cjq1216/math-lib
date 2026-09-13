@@ -127,8 +127,7 @@ function NewHomeworkForm() {
                 onChange={(e) => setHwType(e.target.value)}
               >
                 <option value="homework">课后作业</option>
-                <option value="exam">考试</option>
-                <option value="practice">练习</option>
+                <option value="quiz">测验</option>
               </select>
             </div>
             <div>

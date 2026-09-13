@@ -4,6 +4,7 @@
 from datetime import datetime
 from typing import Optional
 
+from sqlalchemy import UniqueConstraint
 from sqlmodel import Field, SQLModel
 
 
@@ -29,6 +30,21 @@ class Class(SQLModel, table=True):
     created_by: Optional[int] = Field(default=None, foreign_key="users.id")
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class ClassTeacher(SQLModel, table=True):
+    """班级-教师关联；支持一个班级由多位教师共同维护。"""
+
+    __tablename__ = "class_teachers"
+    __table_args__ = (
+        UniqueConstraint("class_id", "teacher_id", name="uq_class_teachers_class_teacher"),
+    )
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    class_id: int = Field(foreign_key="classes.id", index=True, ondelete="CASCADE")
+    teacher_id: int = Field(foreign_key="users.id", index=True, ondelete="CASCADE")
+    assigned_by: Optional[int] = Field(default=None, foreign_key="users.id")
+    assigned_at: datetime = Field(default_factory=datetime.utcnow)
 
 
 class ClassStudent(SQLModel, table=True):

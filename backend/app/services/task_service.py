@@ -16,6 +16,8 @@ from typing import Any, Callable
 from sqlmodel import Session
 
 from app.models.background_task import BackgroundTask, TaskStatus, TaskType
+from app.models.user import User
+from app.services.audit_service import add_audit_event
 
 
 def create_task(
@@ -100,6 +102,15 @@ def fail_task(
     task.error_traceback = traceback.format_exc()[:5000]
     task.finished_at = datetime.utcnow()
     session.add(task)
+    actor = session.get(User, task.created_by) if task.created_by else None
+    add_audit_event(
+        session,
+        action="background_failed",
+        resource_type="background_task",
+        actor=actor,
+        resource_id=task.id,
+        changes={"task_type": task.task_type.value, "error_type": type(error).__name__},
+    )
     session.commit()
 
 

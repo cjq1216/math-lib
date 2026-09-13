@@ -2,7 +2,7 @@
 
 FastAPI 后端，负责认证、题库、知识点、媒体、组卷、班级学生、作业成绩、学情分析和 LLM 任务。
 
-> 当前状态：R0 本地运行基线已完成，下一阶段为 R1。默认使用 `backend/.venv` 和 Uvicorn 本地运行；Docker 配置仅作为未来部署能力，不阻塞开发。
+> 当前状态：R1 认证、授权与 API 契约已完成，下一阶段为 R2 成绩明细与学情闭环。默认使用 `backend/.venv` 和 Uvicorn 本地运行；Docker 配置仅作为未来部署能力，不阻塞开发。
 
 ## 技术栈
 
@@ -47,8 +47,8 @@ backend/
 
 | 模块 | 路径 | 当前说明 |
 |---|---|---|
-| 认证 | `/api/v1/auth` | 登录、注册；当前用户依赖待完成 |
-| 用户 | `/api/v1/users` | 管理接口；管理员权限待完成 |
+| 认证 | `/api/v1/auth` | 首个管理员初始化、登录、refresh 轮换、logout、当前用户 |
+| 用户 | `/api/v1/users` | 管理员专用的用户创建、更新和禁用 |
 | 题目 | `/api/v1/questions` | CRUD、筛选、知识点、小问 |
 | 知识点 | `/api/v1/knowledge` | 平铺列表、树、创建和导入 |
 | 媒体 | `/api/v1/media` | 上传、列表、删除；题目关联待完成 |
@@ -73,6 +73,9 @@ backend/
 | `JWT_SECRET_KEY` | 生产环境必须替换 |
 | `JWT_ACCESS_TOKEN_EXPIRE_MINUTES` | access token 生命周期 |
 | `JWT_REFRESH_TOKEN_EXPIRE_DAYS` | refresh token 生命周期 |
+| `AUTH_REFRESH_COOKIE_NAME` | HttpOnly refresh cookie 名称 |
+| `AUTH_COOKIE_SAMESITE` | refresh cookie SameSite 策略 |
+| `AUTH_COOKIE_SECURE` | 是否强制 refresh cookie 仅 HTTPS；production 始终启用 |
 | `MEDIA_ROOT` | `./data/images` |
 | `MEDIA_BASE_URL` | 媒体公开地址 |
 | `LLM_PROVIDER` | `minimax` 或 `ollama` |
@@ -161,17 +164,18 @@ alembic downgrade -1
 
 - 题目：`Question`、`SubQuestion`、`QuestionAnswer`、`QuestionKnowledge`
 - 试卷：`Paper`、`PaperQuestion`，试卷题目保存快照
-- 班级学生：`Class`、`ClassStudent`、`Student`
+- 班级学生：`Class`、`ClassTeacher`、`ClassStudent`、`Student`
 - 作业成绩：`Homework`、`HomeworkResult`
 - 学情：`StudentKPStats`、`WeakPoint`
 - 媒体：`MediaResource`、`QuestionMedia`
 - 任务：`BackgroundTask`
+- 认证会话：`AuthSession`，保存 refresh token 轮换与撤销状态
 
 R2 将新增正规每题成绩明细，替换依赖 `result_detail JSON` 的核心统计路径。
 
-## 认证与授权要求
+## 认证与授权
 
-最终接口必须使用统一依赖：
+R1 已实现统一依赖：
 
 ```text
 get_current_user
@@ -180,6 +184,8 @@ require_teacher_or_admin
 require_class_access
 require_student_access
 ```
+
+浏览器会话使用短期 Bearer access token 与 HttpOnly refresh cookie。`auth_sessions` 保存当前 refresh `jti`，刷新时轮换，旧 token 重放会撤销该会话；logout 和用户禁用也会撤销会话。授权角色始终以数据库中的当前用户为准。
 
 禁止：
 
@@ -235,24 +241,24 @@ pytest
 alembic upgrade head
 ```
 
-以上命令已在本地通过。全量 Ruff 规则和 mypy 将随 R1 的 schema、类型与旧代码清理一起收口。
+以上命令已在本地通过：Alembic 当前为 `0004_auth_and_class_access`，pytest 18 项通过，基础 Ruff 规则通过。全量 Ruff 仍包含原有现代化建议，mypy 尚未作为当前验收门槛。
 
 核心 smoke：
 
 ```text
 空数据库
   → 迁移
-  → 启动
-  → 注册管理员
-  → 登录
-  → 创建题目
-  → 查询题目
-  → 重启后读取
+  → 初始化管理员并关闭公开注册
+  → 登录并获取 access token / refresh cookie
+  → /auth/me
+  → refresh 轮换与浏览器刷新恢复
+  → 管理员创建教师
+  → 教师班级/学生对象权限隔离
+  → 创建题目/作业并验证可信操作者和审计
 ```
 
-高风险逻辑需要行为级测试：
+后续高风险逻辑需要行为级测试：
 
-- 认证与对象权限；
 - 组卷硬约束和不可满足诊断；
 - 每题成绩汇总；
 - 薄弱点生成和解除；

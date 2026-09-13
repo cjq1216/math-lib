@@ -1,34 +1,32 @@
-"""
-认证相关 Pydantic schema
-"""
-from pydantic import BaseModel, EmailStr, Field
+"""认证相关请求与响应 schema。"""
 
-from app.models.user import UserRole
+from pydantic import EmailStr, Field, field_validator
+
+from app.core.security import validate_password_length
+from app.schemas.common import StrictSchema
+from app.schemas.user import UserRead
 
 
-class LoginResponse(BaseModel):
-    """登录响应"""
-
+class AuthResponse(StrictSchema):
     access_token: str
     token_type: str = "bearer"
-    user_id: int
-    username: str
-    real_name: str
-    role: UserRole
+    user: UserRead
 
 
-class RegisterRequest(BaseModel):
-    """注册请求"""
-
+class RegisterRequest(StrictSchema):
     username: str = Field(min_length=3, max_length=64)
-    password: str = Field(min_length=6, max_length=72)
+    password: str
     real_name: str = Field(min_length=1, max_length=64)
     email: EmailStr | None = None
 
+    @field_validator("password")
+    @classmethod
+    def validate_password(cls, value: str) -> str:
+        return validate_password_length(value)
 
-class TokenPayload(BaseModel):
-    """Token payload"""
 
+class TokenPayload(StrictSchema):
     sub: str
-    role: str | None = None
-    username: str | None = None
+    sid: int
+    type: str
+    jti: str | None = None

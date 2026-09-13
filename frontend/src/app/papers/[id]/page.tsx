@@ -38,18 +38,6 @@ export default function PaperDetailPage() {
     }
   }
 
-  async function exportPaper(format: "word" | "markdown" | "pdf") {
-    try {
-      const r = await http.post<{ message: string }>(
-        `/api/v1/papers/${id}/export?format=${format}`,
-        {},
-      );
-      show(r.message ?? "导出任务已提交", "info");
-    } catch (e) {
-      show(e instanceof Error ? e.message : "导出失败", "error");
-    }
-  }
-
   if (loading) return <Loading />;
   if (error) return <ErrorBox message={error} />;
   if (!data) return null;
@@ -67,11 +55,11 @@ export default function PaperDetailPage() {
           <Button variant="outline" size="sm" onClick={() => setShowAnswer((v) => !v)}>
             {showAnswer ? "隐藏答案" : "显示答案"}
           </Button>
-          <Button variant="outline" size="sm" onClick={() => exportPaper("word")}>
-            导出 Word
+          <Button variant="outline" size="sm" disabled title="将在 R4 实现真实导出">
+            导出 Word（R4）
           </Button>
-          <Button variant="outline" size="sm" onClick={() => exportPaper("markdown")}>
-            导出 Markdown
+          <Button variant="outline" size="sm" disabled title="将在 R4 实现真实导出">
+            导出 Markdown（R4）
           </Button>
           <Button variant="outline" size="sm" onClick={() => router.push(`/homework/new?paper_id=${id}`)}>
             下发为作业

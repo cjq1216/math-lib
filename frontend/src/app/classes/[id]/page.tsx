@@ -19,7 +19,13 @@ import {
   Select,
   useToast,
 } from "@/components/ui";
-import type { ClassItem, ClassOverview, RankRow, StudentItem } from "@/lib/types";
+import type {
+  ClassItem,
+  ClassOverview,
+  ImportErrorItem,
+  RankRow,
+  StudentItem,
+} from "@/lib/types";
 
 interface StudentRow {
   id: number;
@@ -93,13 +99,13 @@ export default function ClassDetailPage() {
     if (!newStudent.student_no.trim() || !newStudent.name.trim())
       return show("学号和姓名必填", "error");
     try {
-      const r = await http.post<{ id: number }>("/api/v1/students/", {
+      await http.post("/api/v1/students/", {
         student_no: newStudent.student_no.trim(),
         name: newStudent.name.trim(),
         gender: newStudent.gender,
         grade: cls?.grade ?? 7,
+        class_id: Number(id),
       });
-      await http.post(`/api/v1/classes/${id}/students/${r.id}`, {});
       show("已新建并加入班级", "success");
       setNewStudent({ student_no: "", name: "", gender: "男" });
       reload();
@@ -110,8 +116,12 @@ export default function ClassDetailPage() {
 
   async function importExcel(file: File) {
     try {
-      const r = await http.upload<{ created: number; updated: number; errors: string[] }>(
-        "/api/v1/students/import",
+      const r = await http.upload<{
+        created: number;
+        updated: number;
+        errors: ImportErrorItem[];
+      }>(
+        `/api/v1/students/import?class_id=${id}`,
         file,
       );
       show(`导入完成：新增 ${r.created}，更新 ${r.updated}，错误 ${r.errors.length}`, r.errors.length ? "error" : "success");

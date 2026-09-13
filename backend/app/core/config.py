@@ -31,8 +31,11 @@ class Settings(BaseSettings):
     # ===== 安全 =====
     jwt_secret_key: str = "dev-secret-please-change-in-production-32chars-min"
     jwt_algorithm: str = "HS256"
-    jwt_access_token_expire_minutes: int = 60 * 24  # 24 小时
+    jwt_access_token_expire_minutes: int = 30
     jwt_refresh_token_expire_days: int = 30
+    auth_refresh_cookie_name: str = "math_bank_refresh"
+    auth_cookie_samesite: Literal["lax", "strict", "none"] = "lax"
+    auth_cookie_secure: bool = False
 
     # ===== 数据库 =====
     database_url: str = "sqlite:///./data/math_bank.db"

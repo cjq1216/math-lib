@@ -100,7 +100,7 @@ def generate_paper(
     # 7. 更新 paper 统计
     paper.question_count = len(selected)
 
-    session.commit()
+    session.flush()
     return paper, pq_list
 
 

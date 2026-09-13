@@ -8,7 +8,9 @@
 ---
 ## 当前实施状态
 
-R0 代码修复已完成，本地运行基线已通过：
+R0 代码修复已完成，本地运行基线已通过；R1 认证、授权与 API 契约也已完成。
+
+R0 完成内容：
 
 - 同步 SQLModel Session 已统一；
 - Alembic 可从空目录、空数据库升级到 head；
@@ -19,18 +21,29 @@ R0 代码修复已完成，本地运行基线已通过：
 - Compose 已统一使用 `backend/.env`、容器内代理和 Python 健康检查；
 - 已增加空库迁移及注册、登录、题目创建/读取回归测试。
 
+R1 完成内容：
+
+- OAuth2 Bearer access token 与 HttpOnly refresh cookie 会话；
+- refresh token 轮换、重放拒绝、logout 与禁用用户会话撤销；
+- 首个管理员初始化后关闭公开注册，用户管理仅管理员可用；
+- 业务路由统一认证，班级/学生/作业和任务具备后端对象级权限；
+- 新增 `ClassTeacher`、`AuthSession` 及 `0004_auth_and_class_access` 迁移；
+- 主要请求和响应改为严格 Pydantic schema，可信操作者由服务端注入；
+- 关键写操作和失败登录/后台任务写入 AuditLog；
+- 前端移除 localStorage token，增加服务端会话恢复、页面守护和 401 自动刷新；
+- ESLint flat config 已启用。
+
 已实际通过：
 
-- 后端空库迁移；
-- 后端 `pytest`：2 项通过；
-- 后端实际服务启动及 `/health`；
-- 注册管理员、登录、创建题目、读取题目；
-- 服务重启后题目仍可读取；
-- development 模式从空库自动迁移；
-- 前端 TypeScript 检查及生产构建；
-- Compose YAML 结构解析。
+- Alembic 空库升级及旧班主任关联回填，head 为 `0004_auth_and_class_access`；
+- 后端 `pytest`：18 项通过；
+- 后端基础 Ruff 检查通过；
+- 实际服务 `/health`、注册关闭、登录、`/auth/me`、refresh 轮换和受保护 API；
+- 前端 TypeScript、ESLint 和生产构建（14 个页面）；
+- 实际浏览器登录、页面守护、刷新后会话恢复，控制台无异常；
+- Compose YAML 结构解析（R0）。
 
-用户已确认本地没有 Docker Engine。R0 按本地开发链路验收并视为完成；Docker 配置保留为未来部署能力，不再阻塞 R1。
+用户已确认本地没有 Docker Engine。R0/R1 按本地开发链路验收并视为完成；Docker 配置保留为未来部署能力，不阻塞 R2。
 
 ---
 
@@ -164,6 +177,7 @@ R0 代码修复已完成，本地运行基线已通过：
 ## 4. 迭代 R1：认证、授权与 API 契约
 
 **优先级：P0**
+**状态：已完成（2026-09-13）**
 
 ### 4.1 认证依赖
 

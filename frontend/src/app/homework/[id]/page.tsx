@@ -18,7 +18,12 @@ import {
   Loading,
   useToast,
 } from "@/components/ui";
-import type { HomeworkResultItem, PaperDetail, StudentItem } from "@/lib/types";
+import type {
+  HomeworkResultItem,
+  ImportErrorItem,
+  PaperDetail,
+  StudentItem,
+} from "@/lib/types";
 
 interface HomeworkDetail {
   id: number;
@@ -146,7 +151,11 @@ export default function HomeworkDetailPage() {
 
   async function importResults(file: File) {
     try {
-      const r = await http.upload<{ created: number; updated: number; errors: string[] }>(
+      const r = await http.upload<{
+        created: number;
+        updated: number;
+        errors: ImportErrorItem[];
+      }>(
         `/api/v1/homework/${id}/import-results`,
         file,
       );

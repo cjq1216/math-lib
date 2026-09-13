@@ -1,6 +1,37 @@
 /**
- * 前端共享类型定义（与后端 SQLModel / 路由返回结构对齐）
+ * 前端共享类型定义（与后端 Pydantic 响应契约对齐）
  */
+
+export type UserRole = "admin" | "teacher";
+
+export interface CurrentUser {
+  id: number;
+  username: string;
+  real_name: string;
+  email?: string | null;
+  phone?: string | null;
+  role: UserRole;
+  is_active: boolean;
+  avatar_url?: string | null;
+  subject?: string | null;
+  notes?: string | null;
+  created_at: string;
+  updated_at: string;
+  last_login_at?: string | null;
+}
+
+export interface AuthResponse {
+  access_token: string;
+  token_type: "bearer";
+  user: CurrentUser;
+}
+
+export interface ImportErrorItem {
+  row?: number | null;
+  column?: string | null;
+  code: string;
+  message: string;
+}
 
 export type QuestionType =
   | "choice_single"

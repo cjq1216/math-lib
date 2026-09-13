@@ -1,67 +1,82 @@
-"""
-题目 CRUD + 检索路由
-"""
+"""题目 CRUD、检索与关联维护。"""
 
 from datetime import datetime
-from typing import Annotated, Optional
+from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlmodel import Session, func, select
 
 from app.core.database import get_session
-from app.models.question import Question, QuestionType
+from app.core.dependencies import get_current_user
+from app.models.knowledge_point import KnowledgePoint
+from app.models.question import Question, QuestionAnswer, QuestionKnowledge, SubQuestion
+from app.models.user import User
+from app.schemas.common import IdResponse, OkResponse
+from app.schemas.question import (
+    QuestionCreate,
+    QuestionKnowledgeSet,
+    QuestionListResponse,
+    QuestionRead,
+    QuestionUpdate,
+    ReplaceResponse,
+    SubQuestionSet,
+)
+from app.services.audit_service import add_audit_event
 
 router = APIRouter()
 
 
-@router.post("/")
+@router.post("/", response_model=IdResponse, status_code=status.HTTP_201_CREATED)
 def create_question(
-    payload: dict,
+    payload: QuestionCreate,
+    request: Request,
     session: Annotated[Session, Depends(get_session)],
-):
-    """创建题目"""
-    q = Question(
-        stem=payload["stem"],
-        stem_html=payload.get("stem_html"),
-        question_type=QuestionType(payload.get("question_type", "choice_single")),
-        difficulty=payload.get("difficulty", 3),
-        total_score=payload.get("total_score", 10.0),
-        options=payload.get("options"),
-        answer=payload.get("answer"),
-        analysis=payload.get("analysis"),
-        tags=payload.get("tags"),
-        created_by=payload.get("created_by"),
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> IdResponse:
+    """创建题目，操作者由认证上下文注入。"""
+    question = Question(**payload.model_dump(), created_by=current_user.id)
+    session.add(question)
+    session.flush()
+    add_audit_event(
+        session,
+        action="create",
+        resource_type="question",
+        actor=current_user,
+        resource_id=question.id,
+        changes={"question_type": question.question_type.value, "difficulty": question.difficulty},
+        request=request,
     )
-    session.add(q)
     session.commit()
-    session.refresh(q)
-    return {"id": q.id}
+    return IdResponse(id=question.id)
 
 
-@router.get("/")
+@router.get("/", response_model=QuestionListResponse)
 def list_questions(
     session: Annotated[Session, Depends(get_session)],
-    keyword: Optional[str] = None,
-    question_type: Optional[str] = None,
-    difficulty: Optional[int] = None,
-    knowledge_point_id: Optional[int] = None,
+    keyword: str | None = None,
+    question_type: str | None = None,
+    difficulty: int | None = Query(default=None, ge=1, le=5),
+    knowledge_point_id: int | None = None,
     skip: int = Query(0, ge=0),
     limit: int = Query(20, ge=1, le=100),
     is_active: bool = True,
-):
-    """题目列表 + 多条件筛选"""
-    stmt = select(Question).where(Question.is_active == is_active)
-
+) -> dict:
+    """题目列表和多条件筛选。"""
+    statement = select(Question).where(Question.is_active == is_active)
     if keyword:
-        stmt = stmt.where(Question.stem.contains(keyword))
+        statement = statement.where(Question.stem.contains(keyword))
     if question_type:
-        stmt = stmt.where(Question.question_type == QuestionType(question_type))
-    if difficulty:
-        stmt = stmt.where(Question.difficulty == difficulty)
-    if knowledge_point_id:
-        from app.models.question import QuestionKnowledge
+        from app.models.question import QuestionType
 
-        stmt = stmt.where(
+        try:
+            parsed_type = QuestionType(question_type)
+        except ValueError:
+            raise HTTPException(status_code=422, detail="无效的题型") from None
+        statement = statement.where(Question.question_type == parsed_type)
+    if difficulty:
+        statement = statement.where(Question.difficulty == difficulty)
+    if knowledge_point_id:
+        statement = statement.where(
             Question.id.in_(
                 select(QuestionKnowledge.question_id).where(
                     QuestionKnowledge.knowledge_point_id == knowledge_point_id
@@ -69,30 +84,22 @@ def list_questions(
             )
         )
 
-    total = session.exec(select(func.count()).select_from(stmt.subquery())).one()
-
+    total = session.exec(select(func.count()).select_from(statement.subquery())).one()
     questions = session.exec(
-        stmt.order_by(Question.created_at.desc()).offset(skip).limit(limit)
+        statement.order_by(Question.created_at.desc()).offset(skip).limit(limit)
     ).all()
-
-    return {
-        "total": total,
-        "items": [_q_to_dict(q) for q in questions],
-    }
+    return {"total": total, "items": [_question_to_dict(item) for item in questions]}
 
 
-@router.get("/{question_id}")
+@router.get("/{question_id}", response_model=QuestionRead)
 def get_question(
     question_id: int,
     session: Annotated[Session, Depends(get_session)],
-):
-    """获取单个题目详情"""
-    q = session.get(Question, question_id)
-    if not q:
-        raise HTTPException(status_code=404, detail="题目不存在")
-
-    # 关联小问
-    from app.models.question import QuestionAnswer, QuestionKnowledge, SubQuestion
+) -> dict:
+    """获取题目详情。"""
+    question = session.get(Question, question_id)
+    if question is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="题目不存在")
 
     sub_questions = session.exec(
         select(SubQuestion)
@@ -102,168 +109,202 @@ def get_question(
     answers = session.exec(
         select(QuestionAnswer).where(QuestionAnswer.question_id == question_id)
     ).all()
-    kps = session.exec(
+    knowledge = session.exec(
         select(QuestionKnowledge).where(QuestionKnowledge.question_id == question_id)
     ).all()
-
     return {
-        **_q_to_dict(q),
-        "sub_questions": [_sq_to_dict(sq) for sq in sub_questions],
-        "answers": [_a_to_dict(a) for a in answers],
+        **_question_to_dict(question),
+        "sub_questions": [_sub_question_to_dict(item) for item in sub_questions],
+        "answers": [_answer_to_dict(item) for item in answers],
         "knowledge_points": [
-            {"kp_id": kp.knowledge_point_id, "is_primary": kp.is_primary} for kp in kps
+            {"kp_id": item.knowledge_point_id, "is_primary": item.is_primary}
+            for item in knowledge
         ],
     }
 
 
-@router.patch("/{question_id}")
+@router.patch("/{question_id}", response_model=IdResponse)
 def update_question(
     question_id: int,
-    payload: dict,
+    payload: QuestionUpdate,
+    request: Request,
     session: Annotated[Session, Depends(get_session)],
-):
-    """更新题目"""
-    q = session.get(Question, question_id)
-    if not q:
-        raise HTTPException(status_code=404, detail="题目不存在")
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> IdResponse:
+    """按显式白名单更新题目。"""
+    question = session.get(Question, question_id)
+    if question is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="题目不存在")
 
-    for k, v in payload.items():
-        if k == "question_type":
-            v = QuestionType(v)
-        setattr(q, k, v)
-    q.updated_at = datetime.utcnow()
-
-    session.add(q)
+    updates = payload.model_dump(exclude_unset=True)
+    for field, value in updates.items():
+        setattr(question, field, value)
+    question.updated_at = datetime.utcnow()
+    session.add(question)
+    add_audit_event(
+        session,
+        action="update",
+        resource_type="question",
+        actor=current_user,
+        resource_id=question.id,
+        changes={"fields": sorted(updates)},
+        request=request,
+    )
     session.commit()
-    return {"id": q.id}
+    return IdResponse(id=question.id)
 
 
-@router.delete("/{question_id}")
+@router.delete("/{question_id}", response_model=OkResponse)
 def delete_question(
     question_id: int,
+    request: Request,
     session: Annotated[Session, Depends(get_session)],
-):
-    """软删题目"""
-    q = session.get(Question, question_id)
-    if not q:
-        raise HTTPException(status_code=404, detail="题目不存在")
-    q.is_active = False
-    session.add(q)
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> OkResponse:
+    """软删题目。"""
+    question = session.get(Question, question_id)
+    if question is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="题目不存在")
+    question.is_active = False
+    question.updated_at = datetime.utcnow()
+    session.add(question)
+    add_audit_event(
+        session,
+        action="delete",
+        resource_type="question",
+        actor=current_user,
+        resource_id=question.id,
+        request=request,
+    )
     session.commit()
-    return {"ok": True}
+    return OkResponse()
 
 
-@router.put("/{question_id}/knowledge")
+@router.put("/{question_id}/knowledge", response_model=ReplaceResponse)
 def set_question_knowledge(
     question_id: int,
-    payload: dict,
+    payload: QuestionKnowledgeSet,
+    request: Request,
     session: Annotated[Session, Depends(get_session)],
-):
-    """
-    全量覆盖题目的知识点关联
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> ReplaceResponse:
+    """全量覆盖题目的知识点关联。"""
+    question = session.get(Question, question_id)
+    if question is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="题目不存在")
 
-    body: {"items": [{"kp_id": 1, "is_primary": true}, ...]}
-    """
-    from app.models.question import QuestionKnowledge
+    kp_ids = [item.kp_id for item in payload.items]
+    if len(kp_ids) != len(set(kp_ids)):
+        raise HTTPException(status_code=422, detail="知识点不能重复")
+    if sum(item.is_primary for item in payload.items) > 1:
+        raise HTTPException(status_code=422, detail="最多只能设置一个主知识点")
+    existing_ids = set(
+        session.exec(select(KnowledgePoint.id).where(KnowledgePoint.id.in_(kp_ids))).all()
+    ) if kp_ids else set()
+    missing = sorted(set(kp_ids) - existing_ids)
+    if missing:
+        raise HTTPException(status_code=422, detail=f"知识点不存在: {missing}")
 
-    q = session.get(Question, question_id)
-    if not q:
-        raise HTTPException(status_code=404, detail="题目不存在")
-
-    # 先删旧关联
-    old = session.exec(
+    for old in session.exec(
         select(QuestionKnowledge).where(QuestionKnowledge.question_id == question_id)
-    ).all()
-    for o in old:
-        session.delete(o)
+    ).all():
+        session.delete(old)
     session.flush()
-
-    for item in payload.get("items", []):
-        kp_id = item.get("kp_id")
-        if not kp_id:
-            continue
+    for item in payload.items:
         session.add(
             QuestionKnowledge(
                 question_id=question_id,
-                knowledge_point_id=int(kp_id),
-                is_primary=bool(item.get("is_primary", False)),
-                weight=float(item.get("weight", 1.0)),
+                knowledge_point_id=item.kp_id,
+                is_primary=item.is_primary,
+                weight=item.weight,
             )
         )
+    add_audit_event(
+        session,
+        action="set_knowledge",
+        resource_type="question",
+        actor=current_user,
+        resource_id=question_id,
+        changes={"knowledge_point_ids": kp_ids},
+        request=request,
+    )
     session.commit()
-    return {"ok": True, "count": len(payload.get("items", []))}
+    return ReplaceResponse(count=len(payload.items))
 
 
-@router.put("/{question_id}/sub-questions")
+@router.put("/{question_id}/sub-questions", response_model=ReplaceResponse)
 def set_sub_questions(
     question_id: int,
-    payload: dict,
+    payload: SubQuestionSet,
+    request: Request,
     session: Annotated[Session, Depends(get_session)],
-):
-    """
-    全量覆盖题目的小问
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> ReplaceResponse:
+    """全量覆盖题目的小问。"""
+    question = session.get(Question, question_id)
+    if question is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="题目不存在")
 
-    body: {"items": [{"label": "(1)", "stem": "...", "score": 4, "answer": "..."}]}
-    """
-    from app.models.question import SubQuestion
-
-    q = session.get(Question, question_id)
-    if not q:
-        raise HTTPException(status_code=404, detail="题目不存在")
-
-    old = session.exec(select(SubQuestion).where(SubQuestion.question_id == question_id)).all()
-    for o in old:
-        session.delete(o)
+    for old in session.exec(
+        select(SubQuestion).where(SubQuestion.question_id == question_id)
+    ).all():
+        session.delete(old)
     session.flush()
-
-    for idx, item in enumerate(payload.get("items", [])):
+    for index, item in enumerate(payload.items):
         session.add(
             SubQuestion(
                 question_id=question_id,
-                label=item.get("label") or f"({idx + 1})",
-                stem=item.get("stem"),
-                score=float(item.get("score", 0)),
-                answer=item.get("answer"),
-                display_order=idx,
+                label=item.label or f"({index + 1})",
+                stem=item.stem,
+                score=item.score,
+                answer=item.answer,
+                analysis=item.analysis,
+                display_order=index,
             )
         )
+    add_audit_event(
+        session,
+        action="set_sub_questions",
+        resource_type="question",
+        actor=current_user,
+        resource_id=question_id,
+        changes={"count": len(payload.items)},
+        request=request,
+    )
     session.commit()
-    return {"ok": True, "count": len(payload.get("items", []))}
+    return ReplaceResponse(count=len(payload.items))
 
 
-# ====== 辅助函数 ======
-
-
-def _q_to_dict(q: Question) -> dict:
+def _question_to_dict(question: Question) -> dict:
     return {
-        "id": q.id,
-        "stem": q.stem,
-        "question_type": q.question_type,
-        "difficulty": q.difficulty,
-        "total_score": q.total_score,
-        "options": q.options,
-        "answer": q.answer,
-        "analysis": q.analysis,
-        "tags": q.tags,
-        "is_verified": q.is_verified,
-        "created_at": q.created_at,
+        "id": question.id,
+        "stem": question.stem,
+        "question_type": question.question_type,
+        "difficulty": question.difficulty,
+        "total_score": question.total_score,
+        "options": question.options,
+        "answer": question.answer,
+        "analysis": question.analysis,
+        "tags": question.tags,
+        "is_verified": question.is_verified,
+        "created_at": question.created_at,
     }
 
 
-def _sq_to_dict(sq) -> dict:
+def _sub_question_to_dict(sub_question: SubQuestion) -> dict:
     return {
-        "id": sq.id,
-        "label": sq.label,
-        "stem": sq.stem,
-        "score": sq.score,
-        "answer": sq.answer,
+        "id": sub_question.id,
+        "label": sub_question.label,
+        "stem": sub_question.stem,
+        "score": sub_question.score,
+        "answer": sub_question.answer,
     }
 
 
-def _a_to_dict(a) -> dict:
+def _answer_to_dict(answer: QuestionAnswer) -> dict:
     return {
-        "id": a.id,
-        "blank_index": a.blank_index,
-        "answer_text": a.answer_text,
-        "is_primary": a.is_primary,
+        "id": answer.id,
+        "blank_index": answer.blank_index,
+        "answer_text": answer.answer_text,
+        "is_primary": answer.is_primary,
     }

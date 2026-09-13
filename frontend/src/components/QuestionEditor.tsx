@@ -95,7 +95,7 @@ export function QuestionEditor({ initial }: Props) {
       .get<KnowledgePoint[]>("/api/v1/knowledge/tree")
       .then((tree) => setKpList(flattenKps(tree)))
       .catch(() => show("知识点加载失败，请确认已导入知识点", "error"));
-  }, []);
+  }, [show]);
 
   const filteredKps = React.useMemo(() => {
     const kw = kpKeyword.trim();

@@ -51,7 +51,7 @@ export default function KnowledgePage() {
       })
       .catch((e) => show(e.message, "error"))
       .finally(() => setLoading(false));
-  }, []);
+  }, [show]);
 
   React.useEffect(reload, [reload]);
 
@@ -219,7 +219,7 @@ export default function KnowledgePage() {
           </CardHeader>
           <CardContent className="space-y-3">
             <p className="text-xs text-muted-foreground">
-              格式：[{"{"}"code":"G7-S1-01","name":"有理数","grade":7,"parent_code":"G7-S1"{"}"}]
+              格式：<code>{'[{"code":"G7-S1-01","name":"有理数","grade":7,"parent_code":"G7-S1"}]'}</code>
               <br />
               parent_code 留空表示顶级，导入后自动建立父子关系。
             </p>

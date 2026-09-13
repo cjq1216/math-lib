@@ -2,7 +2,7 @@
 
 Next.js 前端，提供题库、知识点、组卷、班级学生、作业成绩和学情分析界面。
 
-> 当前状态：页面原型可完成 TypeScript 检查和生产构建；认证保护、完整题目编辑、每题成绩、真实导出和后端端到端联调仍待修复。
+> 当前状态：R1 会话恢复、401 自动刷新、业务页面守护和 ESLint 已完成；完整题目聚合编辑、每题成绩、真实导出等后续闭环仍待 R2-R4 实现。
 
 ## 技术栈
 
@@ -81,6 +81,7 @@ npm run dev
 
 ```bash
 npm run type-check
+npm run lint
 npm run build
 npm start
 ```
@@ -88,8 +89,9 @@ npm start
 当前验证结果：
 
 - `npm run type-check`：通过；
-- `npm run build`：通过；
-- `npm run lint`：失败，尚未配置可执行 ESLint CLI。
+- `npm run lint`：通过；
+- `npm run build`：通过，生成 14 个页面；
+- 实际浏览器登录、受保护页面和刷新后会话恢复：通过，控制台无异常。
 
 ## 环境变量
 
@@ -141,7 +143,9 @@ API_PROXY_TARGET=http://backend:8000
 - `http.download`
 - `qs`
 
-当前 token 存在 localStorage，401 时清除 token 并跳转登录。R1 将统一会话策略和路由保护；修改前不要在页面中新增第二套认证处理。
+access token 仅保存在页面进程内存中，refresh token 由后端写入 HttpOnly cookie。并发 401 共用一次 refresh 请求，成功后原请求只重试一次；刷新失败才清理会话并跳转登录。上传和下载也走同一恢复逻辑。
+
+`src/components/AuthProvider.tsx` 启动时通过 refresh 和 `/auth/me` 建立服务端验证的当前用户；`AppShell` 在验证完成前不渲染业务页面，并按真实用户状态执行路由守护。不要在页面中新增第二套认证处理。
 
 要求：
 
@@ -182,10 +186,13 @@ API_PROXY_TARGET=http://backend:8000
 
 ### 认证
 
-- `AppShell` 只检查 localStorage 中是否存在 token；
-- 未验证 token；
-- 未保护业务页面；
-- 未实现管理员和教师差异界面。
+R1 已完成：
+
+- 页面不再使用 localStorage/sessionStorage 保存 token；
+- `/auth/me` 是当前用户和角色的真实来源；
+- access 过期后通过 HttpOnly refresh cookie 自动恢复；
+- 登录页之外的业务页面均由 `AppShell` 守护；
+- 顶部导航显示真实用户和管理员/教师角色，退出会撤销后端会话。
 
 ### 题目编辑
 
@@ -232,17 +239,14 @@ API_PROXY_TARGET=http://backend:8000
   "dev": "next dev",
   "build": "next build",
   "start": "next start",
-  "lint": "next lint",
+  "lint": "eslint . --max-warnings=0",
   "type-check": "tsc --noEmit"
 }
 ```
 
-需要在 R1 修复：
+R1 已增加 `eslint.config.mjs` 并将 lint 改为非交互式 ESLint CLI。当前 type-check、lint、build 均通过。
 
-- 增加 ESLint flat config；
-- 将 lint 脚本改为 ESLint CLI；
-- 删除未使用依赖或完成统一迁移；
-- 在 CI 中依次运行 type-check、lint 和 build。
+后续仍需删除未使用依赖或完成统一迁移，并在 CI 中固定依次运行 type-check、lint 和 build。
 
 ## Docker
 

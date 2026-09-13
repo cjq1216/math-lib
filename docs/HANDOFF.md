@@ -2,18 +2,20 @@
 
 > 项目：初中数学题库与学情分析系统  
 > 交接日期：2026-09-12  
-> 当前阶段：R0 已完成，下一阶段 R1  
+> 当前阶段：R1 已完成，下一阶段 R2
 > 默认运行方式：Windows 本地开发环境，不以 Docker 作为迭代阻塞条件
 
 ---
 
 ## 1. 当前结论
 
-R0“恢复可运行基线”已经完成并通过本地实际运行验证。后端可以从空数据库迁移、启动，完成注册、登录、创建题目和读取题目；服务重启后数据仍然存在。前端类型检查和生产构建通过。
+R0“恢复可运行基线”和 R1“认证、授权与 API 契约”已经完成并通过本地实际运行验证。后端可以从空数据库迁移到 `0004_auth_and_class_access`，完成首个管理员初始化、登录、HttpOnly refresh cookie 轮换、Bearer access token 校验、当前用户查询、管理员用户管理，以及班级/学生对象级权限隔离。业务 API 已统一要求登录，可信操作者由服务端注入。
 
-当前项目仍不是最终 MVP。下一优先级是 R1：认证、授权与 API 契约。学情、组卷、媒体和导出问题继续按 `REMEDIATION_PLAN.md` 顺序处理。
+前端已移除 localStorage token，改为内存 access token + HttpOnly refresh cookie；启动时通过服务端恢复会话，业务页面具备路由守护。TypeScript、ESLint flat config 和生产构建均已通过。
 
-本地没有 Docker Engine。Dockerfile 和 Compose 配置保留为未来部署能力，但 Docker 实际构建不再作为进入 R1 的前置条件。
+当前项目仍不是最终 MVP。下一优先级是 R2：成绩明细与学情闭环。组卷、媒体和导出问题继续按 `REMEDIATION_PLAN.md` 顺序处理。
+
+本地没有 Docker Engine。Dockerfile 和 Compose 配置保留为未来部署能力，但 Docker 实际构建不作为本地迭代前置条件。
 
 ---
 
@@ -113,19 +115,16 @@ cd backend
 
 结果：
 
-- 空库迁移通过：`0001_initial → 0002_vec_questions → 0003_background_tasks`；
-- `pytest`：2 项通过；
-- 基础 Ruff 检查通过；
-- `pip check` 通过；
-- 实际 Uvicorn 启动通过；
-- `/health` 返回 200；
-- 注册、登录、题目创建和读取均返回 200；
-- 服务重启后题目仍可读取；
-- development 模式从空目录自动迁移通过。
+- 迁移通过：`0001_initial → 0002_vec_questions → 0003_background_tasks → 0004_auth_and_class_access`（当前 head）；
+- `pytest`：18 项测试全部通过（涵盖迁移回填、无鉴权 401、首个管理员初始化与二次注册关闭、登录与 `/auth/me`、refresh 轮换与重放防御、禁用用户会话立即失效、管理员专用用户管理、班级/学生/作业对象级权限隔离、伪造操作者字段拒绝、审计日志与 OpenAPI Bearer 契约声明）；
+- 基础 Ruff 检查通过（零错误）；
+- 实际 Uvicorn 启动通过，`/health` 返回 200；
+- 首个管理员注册、二次注册 403 拒绝、登录、刷新轮换及各业务接口鉴权拦截均实际运行验证通过；
+- development 模式空库自动迁移通过。
 
 现有非阻断警告：
 
-- 多个模型仍使用 `datetime.utcnow()`，Python 3.14 提示弃用；
+- 多个模型仍使用 `datetime.utcnow()`，Python 3.14 提示弃用（建议在后续代码现代化阶段统一为 `datetime.now(timezone.utc)`）；
 - Starlette TestClient 使用 AnyIO 的弃用别名。
 
 ### 前端
@@ -135,18 +134,16 @@ cd backend
 ```bash
 cd frontend
 npm run type-check
+npm run lint
 npm run build
 ```
 
-生产构建生成 14 个页面。
+结果：
 
-未通过：
-
-```bash
-npm run lint
-```
-
-原因：项目没有 ESLint flat config，`next lint` 会进入交互式初始化。该项并入 R1 的代码质量收口。
+- `type-check`：通过；
+- `lint`：通过（ESLint 9 Flat Config，`--max-warnings=0` 零警告）；
+- `build`：生产构建生成 14 个页面全部通过；
+- 实际 Chrome 自动化驱动验证：通过（登录表单提交、跳转主页、受保护页面守护拦截、页面刷新后通过 HttpOnly refresh cookie 自动恢复会话，控制台零异常）。
 
 ### Docker
 
@@ -223,16 +220,20 @@ API_PROXY_TARGET=http://localhost:8000
 
 | 文件 | 作用 |
 |---|---|
-| `backend/app/core/config.py` | 环境配置和旧数据库 URL 兼容 |
 | `backend/app/core/database.py` | 同步 Engine、Session、SQLite pragma 和开发迁移 |
-| `backend/app/main.py` | 目录初始化、生命周期、静态文件和健康检查 |
-| `backend/alembic/env.py` | 迁移环境和空目录处理 |
-| `backend/alembic/versions/0002_vec_questions.py` | 可移植 Embedding 表迁移 |
-| `backend/app/models/question_embedding.py` | Embedding SQLModel |
-| `backend/tests/test_smoke.py` | R0 回归测试 |
-| `frontend/src/lib/api.ts` | 前端 API 请求、token 和文件操作 |
-| `frontend/src/components/AppShell.tsx` | 当前前端登录状态和导航 |
-| `docs/REMEDIATION_PLAN.md` | R1-R6 执行计划 |
+| `backend/app/core/security.py` | 密码策略及 access/refresh JWT 签发校验 |
+| `backend/app/core/dependencies.py` | 当前用户、角色、班级/学生/作业权限依赖 |
+| `backend/app/api/v1/auth.py` | 初始化管理员、登录、refresh 轮换、logout、`/me` |
+| `backend/app/models/auth_session.py` | 可撤销、可轮换的登录会话 |
+| `backend/app/models/class_.py` | 班级、班级教师和班级学生关联 |
+| `backend/alembic/versions/0004_auth_and_class_access.py` | R1 会话与班级教师迁移 |
+| `backend/app/schemas/` | 各领域显式 Pydantic 请求/响应契约 |
+| `backend/app/services/audit_service.py` | 与业务事务共同提交的显式审计事件 |
+| `backend/tests/test_r1_auth_and_authorization.py` | R1 认证、授权、审计和 OpenAPI 回归 |
+| `frontend/src/lib/api.ts` | 内存 access token、401 refresh 和统一文件请求 |
+| `frontend/src/components/AuthProvider.tsx` | 服务端验证的前端会话状态 |
+| `frontend/src/components/AppShell.tsx` | 页面守护、导航和退出 |
+| `docs/REMEDIATION_PLAN.md` | R0-R6 修复顺序与验收标准 |
 
 ---
 
@@ -245,7 +246,7 @@ API_PROXY_TARGET=http://localhost:8000
 5. 试卷题目继续使用快照；
 6. 学生不登录，由教师维护；
 7. 不允许客户端提供可信的 `created_by`、`recorded_by`；
-8. 未完成认证授权前，不宣称数据隔离成立；
+8. 班级、学生、作业和任务的数据范围必须由后端权限依赖校验，不能依赖前端隐藏；
 9. 不以 Docker 可用性阻塞本地开发；
 10. 每个迭代必须以实际运行场景验收。
 
@@ -255,60 +256,62 @@ API_PROXY_TARGET=http://localhost:8000
 
 ### P0：下一步必须处理
 
-- 业务接口没有统一 JWT 认证依赖；
-- `/auth/me` 仍返回 501；
-- 用户管理没有管理员权限；
-- 公开注册在首个管理员之后仍可创建教师；
-- 教师可以访问全部班级、学生和学情；
-- `created_by` 等审计字段仍由客户端 payload 提交；
-- 大部分 API 使用裸 `dict`，PATCH 存在批量赋值风险。
+- `homework_results.result_detail` 仍不能可靠表示每题成绩，知识点统计缺少可信输入；
+- 作业班级和学生名单仍保存在 JSON 字段中，尚未形成历史名单快照；
+- Excel 成绩导入尚未绑定 `paper_question_id`，对错版与得分版尚未完成同等校验；
+- 学情聚合尚未实现近期趋势、薄弱点自动解除和规范化班级统计。
 
 ### 后续业务风险
 
-- 成绩明细不能支撑可靠学情分析；
 - 智能组卷不保证所有硬约束；
-- Word/Markdown 导出仍是占位；
-- 媒体上传没有题目关联闭环；
-- LLM provider 没有真实失败兜底；
-- 关键关联表缺少组合唯一约束；
-- 班级移除学生的 `left_at` 过滤存在错误。
+- Word/Markdown 导出尚未实现，接口现明确返回 501，前端按钮已禁用；
+- 媒体上传没有题目关联闭环，`/static` 资源仍是公开静态地址；
+- LLM provider 没有真实失败兜底，进程重启仍会丢失执行中任务；
+- R2/R3 尚需补齐其他关键关联表的组合唯一约束；
+- Python 3.14 下现有 `datetime.utcnow()` 与 Starlette TestClient 仍产生弃用警告。
 
 详细证据见 `AUDIT_REPORT.md`。
 
 ---
 
-## 9. 下一迭代：R1
+## 9. R1 完成证据与下一迭代
 
-目标：认证、授权和 API 契约。
+### R1 已完成
 
-### 第一批实施顺序
+- access token 使用 OAuth2 Bearer，refresh token 使用同源 HttpOnly cookie；
+- `auth_sessions` 支持 refresh 轮换、重放拒绝和 logout 撤销；
+- `/auth/me` 返回数据库当前用户，禁用用户的现有会话立即失效；
+- 仅空库允许公开初始化第一个管理员，后续用户只能由管理员创建；
+- 业务路由统一认证，用户管理为管理员专用；
+- `ClassTeacher` 与对象权限依赖限制教师只能访问任教班级、在班学生及对应作业；
+- `created_by`、`recorded_by`、媒体上传者和任务创建者均由服务端注入；
+- 主要 API 已使用严格 Pydantic schema，PATCH 不再接受任意字段；
+- 登录、用户、题目、班级、学生、试卷、作业、导入及后台失败写入审计；
+- 前端不再使用 localStorage，刷新浏览器可通过 HttpOnly refresh cookie 恢复会话；
+- ESLint flat config、类型检查和生产构建通过。
 
-1. 在 `app/core/security.py` 增加 OAuth2 Bearer token 解析；
-2. 新建认证依赖模块，提供：
-   - `get_current_user`
-   - `require_admin`
-   - `require_teacher_or_admin`
-3. 实现 `/auth/me`；
-4. 首个管理员创建后关闭公开注册；
-5. 用户管理路由增加管理员依赖；
-6. 所有业务路由要求登录；
-7. 删除 payload 中的 `created_by`、`recorded_by` 信任路径；
-8. 建立第一批 Pydantic schema，优先认证、用户和题目；
-9. 增加 401、403、禁用用户和伪造审计字段回归测试；
-10. 增加 ESLint flat config，修复 `npm run lint`。
+验证结果：
 
-### R1 验收
+```text
+Alembic: 0004_auth_and_class_access (head)
+pytest: 18 passed
+Ruff 基础规则: passed
+frontend type-check: passed
+frontend lint: passed
+frontend build: passed（14 个页面）
+实际浏览器: 登录、受保护页面、刷新后会话恢复通过；控制台无异常
+```
 
-- 未登录访问业务接口返回 401；
-- 禁用用户 token 不再可用；
-- 教师不能访问用户管理；
-- `/auth/me` 返回数据库中的当前用户；
-- 第二个及后续用户不能公开注册；
-- 伪造 `created_by` 不生效；
-- OpenAPI 显示 Bearer 认证和明确 schema；
-- 后端测试、基础 Ruff、前端 type-check、lint、build 全部通过。
+### 下一迭代：R2
 
-对象级班级/学生权限如果需要新增班级教师关联表，应在 R1 内完成迁移，不使用前端隐藏按钮代替后端授权。
+按 `REMEDIATION_PLAN.md` 第 5 节实施“成绩明细与学情闭环”：
+
+1. 新增正规每题成绩明细和作业名单关联表；
+2. 从试卷快照计算满分并生成稳定模板；
+3. 完成得分版/对错版 Excel 幂等导入与结构化错误；
+4. 由每题结果自动聚合学生和班级学情；
+5. 完成薄弱点生成、恢复解除和针对性练习闭环；
+6. 用一个学生、三个知识点、五次作业的真实场景验收。
 
 ---
 
@@ -319,4 +322,4 @@ cd backend
 .venv\Scripts\pytest.exe -q
 ```
 
-确认 R0 回归仍通过后，直接开始 R1 的认证依赖和 `/auth/me`，不再等待 Docker。
+确认 R0/R1 回归仍通过后，直接开始 R2 的成绩明细模型与迁移，不再等待 Docker。

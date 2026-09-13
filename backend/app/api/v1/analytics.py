@@ -1,13 +1,24 @@
-"""
-学情分析路由 - 薄弱点/班级排行/针对性出题
-"""
+"""学生和班级学情分析路由。"""
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query, Request
 from sqlmodel import Session
 
 from app.core.database import get_session
+from app.core.dependencies import get_current_user, require_class_access, require_student_access
+from app.models.class_ import Class
+from app.models.student import Student
+from app.models.user import User
+from app.schemas.analytics import (
+    ClassOverview,
+    RankRow,
+    StudentOverview,
+    TargetedPracticeRequest,
+    TargetedPracticeResponse,
+    WeakPointRead,
+)
+from app.schemas.common import OkResponse
 from app.services.analytics_service import (
     generate_targeted_practice,
     get_class_overview,
@@ -16,66 +27,84 @@ from app.services.analytics_service import (
     get_student_weak_points,
     recompute_student_stats,
 )
+from app.services.audit_service import add_audit_event
 
 router = APIRouter()
 
 
-@router.post("/students/{student_id}/recompute")
+@router.post("/students/{student_id}/recompute", response_model=OkResponse)
 def recompute_student(
-    student_id: int,
+    request: Request,
+    student: Annotated[Student, Depends(require_student_access)],
     session: Annotated[Session, Depends(get_session)],
-):
-    """重算某学生学情（手动触发）"""
-    recompute_student_stats(session, student_id)
-    return {"ok": True}
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> OkResponse:
+    """重算有权访问学生的学情。"""
+    recompute_student_stats(session, student.id)
+    add_audit_event(
+        session,
+        action="recompute",
+        resource_type="student_analytics",
+        actor=current_user,
+        resource_id=student.id,
+        request=request,
+    )
+    session.commit()
+    return OkResponse()
 
 
-@router.get("/students/{student_id}/overview")
+@router.get("/students/{student_id}/overview", response_model=StudentOverview)
 def student_overview(
-    student_id: int,
+    student: Annotated[Student, Depends(require_student_access)],
     session: Annotated[Session, Depends(get_session)],
-):
-    """学生学情概览"""
-    return get_student_overview(session, student_id)
+) -> dict:
+    """学生学情概览。"""
+    return get_student_overview(session, student.id)
 
 
-@router.get("/students/{student_id}/weak-points")
+@router.get("/students/{student_id}/weak-points", response_model=list[WeakPointRead])
 def student_weak_points(
-    student_id: int,
+    student: Annotated[Student, Depends(require_student_access)],
     session: Annotated[Session, Depends(get_session)],
-    top_n: int = 5,
-):
-    """学生薄弱知识点"""
-    return get_student_weak_points(session, student_id, top_n)
+    top_n: int = Query(5, ge=1, le=100),
+) -> list[dict]:
+    """学生薄弱知识点。"""
+    return get_student_weak_points(session, student.id, top_n)
 
 
-@router.post("/students/{student_id}/targeted-practice")
+@router.post(
+    "/students/{student_id}/targeted-practice",
+    response_model=TargetedPracticeResponse,
+)
 def targeted_practice(
-    student_id: int,
-    payload: dict,
+    payload: TargetedPracticeRequest,
+    student: Annotated[Student, Depends(require_student_access)],
     session: Annotated[Session, Depends(get_session)],
-):
-    """针对性练习（基于薄弱点选题）"""
-    count = payload.get("count", 5)
-    difficulty_min = payload.get("difficulty_min", 1)
-    difficulty_max = payload.get("difficulty_max", 5)
-    return generate_targeted_practice(session, student_id, count, difficulty_min, difficulty_max)
+) -> dict:
+    """按薄弱点为有权访问的学生选题。"""
+    return generate_targeted_practice(
+        session,
+        student.id,
+        payload.count,
+        payload.difficulty_min,
+        payload.difficulty_max,
+    )
 
 
-@router.get("/classes/{class_id}/ranking")
+@router.get("/classes/{class_id}/ranking", response_model=list[RankRow])
 def class_ranking(
-    class_id: int,
+    class_: Annotated[Class, Depends(require_class_access)],
     session: Annotated[Session, Depends(get_session)],
     homework_id: int | None = None,
-):
-    """班级排行（按作业）"""
-    return get_class_ranking(session, class_id, homework_id)
+) -> list[dict]:
+    """有权访问班级的成绩排行。"""
+    return get_class_ranking(session, class_.id, homework_id)
 
 
-@router.get("/classes/{class_id}/overview")
+@router.get("/classes/{class_id}/overview", response_model=ClassOverview)
 def class_overview(
-    class_id: int,
+    class_: Annotated[Class, Depends(require_class_access)],
     session: Annotated[Session, Depends(get_session)],
-):
-    """班级整体学情"""
-    return get_class_overview(session, class_id)
+) -> dict:
+    """有权访问班级的整体学情。"""
+    return get_class_overview(session, class_.id)

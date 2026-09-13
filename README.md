@@ -2,7 +2,7 @@
 
 面向培训机构数学教研组的本地化题库、智能组卷与学情分析系统。
 
-> 当前状态：R0 本地运行基线已完成，下一阶段为 R1 认证、授权与 API 契约。用户本地没有 Docker，项目默认使用后端 venv + Uvicorn 和前端 Next.js 运行；Docker 配置仅作为未来部署能力，不阻塞迭代。
+> 当前状态：R1 认证、授权与 API 契约已完成，下一阶段为 R2 成绩明细与学情闭环。用户本地没有 Docker，项目默认使用后端 venv + Uvicorn 和前端 Next.js 运行；Docker 配置仅作为未来部署能力，不阻塞迭代。
 
 ## 项目目标
 
@@ -33,16 +33,19 @@
 - 题目、知识点、试卷、班级、作业和学情领域模型；
 - 主要前端页面和 API 路由骨架；
 - KaTeX 公式渲染；
-- 智能组卷、LLM 任务和学情聚合的初步实现。
+- 智能组卷、LLM 任务和学情聚合的初步实现；
+- OAuth2 Bearer access token、HttpOnly refresh cookie 轮换与可撤销会话；
+- 管理员/教师角色授权、班级教师关联以及班级/学生对象级隔离；
+- 主要 API 的显式 Pydantic 契约、可信操作者注入和审计日志；
+- 前端服务端会话验证、受保护页面守护和 401 自动刷新。
 
 尚未达到最终 MVP 验收状态：
 
-- JWT 已签发，但业务接口认证授权和对象级数据隔离尚待 R1；
 - 每题成绩模型和学情分析闭环尚待 R2；
 - 智能组卷尚不能保证全部硬约束；
-- Markdown/Word 导出仍是占位；
-- 媒体资源尚未与题目形成完整关联；
-- Docker 实际构建未验证，但不影响本地开发和 R1 推进；
+- Markdown/Word 导出尚未实现，当前接口明确返回 501、前端按钮禁用；
+- 媒体资源尚未与题目形成完整关联，静态文件地址仍公开；
+- Docker 实际构建未验证，但不影响本地开发和 R2 推进；
 - PRD 完整验收集尚未执行。
 
 完整证据和修复顺序：
@@ -56,7 +59,7 @@
 |---|---|
 | 后端 | Python 3.11+、FastAPI、SQLModel、Alembic |
 | 数据库 | SQLite；向量能力规划使用 sqlite-vec |
-| 认证 | JWT，后续完成对象级授权和 refresh 策略 |
+| 认证 | OAuth2 Bearer access token、HttpOnly refresh cookie、可撤销会话与对象级授权 |
 | LLM | MiniMax、Ollama |
 | 前端 | Next.js 15、React 19、TypeScript、Tailwind CSS |
 | 数学公式 | KaTeX |
@@ -202,21 +205,22 @@ pytest
 
 cd ../frontend
 npm run type-check
+npm run lint
 npm run build
 ```
 
 当前结果：
 
-- Alembic 空库升级通过；
-- 后端回归测试 2 项通过；
-- 后端实际服务和核心 API smoke 通过；
+- Alembic 空库升级及现有班主任关联回填通过，当前 head 为 `0004_auth_and_class_access`；
+- 后端回归测试 18 项通过；
+- 后端认证、refresh 轮换、对象权限、可信审计字段和 OpenAPI smoke 通过；
 - development 模式空库自动迁移通过；
-- 前端类型检查和生产构建通过。
+- 前端类型检查、ESLint 和生产构建通过；
+- 实际浏览器登录、页面守护和刷新后会话恢复通过，控制台无异常。
 
 已知验证缺口：
 
 - Docker 镜像和 Compose 尚未实际构建；该项为未来部署验证，不阻塞本地迭代；
-- `npm run lint` 尚不可用于 CI；
 - PRD 完整业务验收尚未执行。
 
 ## 文档优先级

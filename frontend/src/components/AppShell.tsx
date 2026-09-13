@@ -3,7 +3,8 @@
 import * as React from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { Button } from "./ui";
+import { useAuth } from "./AuthProvider";
+import { Button, Loading } from "./ui";
 
 const NAV = [
   { href: "/questions", label: "题库" },
@@ -17,18 +18,37 @@ const NAV = [
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
-  const [authed, setAuthed] = React.useState(false);
+  const { user, loading, logout } = useAuth();
+  const [logoutFailed, setLogoutFailed] = React.useState(false);
+  const isLoginPage = pathname === "/login";
 
   React.useEffect(() => {
-    setAuthed(Boolean(localStorage.getItem("token")));
-  }, [pathname]);
+    if (loading) return;
+    if (!user && !isLoginPage) {
+      router.replace(`/login?next=${encodeURIComponent(pathname)}`);
+    } else if (user && isLoginPage) {
+      router.replace("/");
+    }
+  }, [isLoginPage, loading, pathname, router, user]);
 
-  // 登录页不套导航
-  if (pathname === "/login") return <>{children}</>;
+  if (loading || (!user && !isLoginPage) || (user && isLoginPage)) {
+    return (
+      <main className="flex min-h-screen items-center justify-center p-4">
+        <Loading text="正在验证登录状态..." />
+      </main>
+    );
+  }
 
-  function logout() {
-    localStorage.removeItem("token");
-    router.push("/login");
+  if (isLoginPage) return <>{children}</>;
+
+  async function handleLogout() {
+    setLogoutFailed(false);
+    try {
+      await logout();
+      router.replace("/login");
+    } catch {
+      setLogoutFailed(true);
+    }
   }
 
   return (
@@ -39,31 +59,33 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             数学题库
           </Link>
           <nav className="flex flex-1 items-center gap-1 overflow-x-auto text-sm">
-            {NAV.map((n) => {
-              const active = pathname === n.href || pathname.startsWith(n.href + "/");
+            {NAV.map((item) => {
+              const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
               return (
                 <Link
-                  key={n.href}
-                  href={n.href}
+                  key={item.href}
+                  href={item.href}
                   className={
                     "rounded-md px-3 py-1.5 whitespace-nowrap transition " +
-                    (active ? "bg-accent font-medium" : "text-muted-foreground hover:bg-accent/60")
+                    (active
+                      ? "bg-accent font-medium"
+                      : "text-muted-foreground hover:bg-accent/60")
                   }
                 >
-                  {n.label}
+                  {item.label}
                 </Link>
               );
             })}
           </nav>
-          {authed ? (
-            <Button variant="ghost" size="sm" onClick={logout}>
-              退出
-            </Button>
-          ) : (
-            <Link href="/login">
-              <Button size="sm">登录</Button>
-            </Link>
-          )}
+          <div className="hidden text-right text-xs sm:block">
+            <div className="font-medium">{user?.real_name}</div>
+            <div className="text-muted-foreground">
+              {user?.role === "admin" ? "管理员" : "教师"}
+            </div>
+          </div>
+          <Button variant="ghost" size="sm" onClick={() => void handleLogout()}>
+            {logoutFailed ? "退出失败，请重试" : "退出"}
+          </Button>
         </div>
       </header>
       <main className="mx-auto max-w-7xl px-4 py-6">{children}</main>

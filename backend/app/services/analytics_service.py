@@ -89,10 +89,10 @@ def recompute_student_stats(session: Session, student_id: int) -> None:
 
     # 同时识别薄弱点
     _update_weak_points(session, student_id, kp_total, kp_correct)
-    session.commit()
 
-    # 更新学生聚合字段
+    # 更新学生聚合字段；事务由调用方统一提交。
     _update_student_aggregate(session, student_id)
+    session.flush()
 
 
 def _update_weak_points(
@@ -298,7 +298,10 @@ def get_class_ranking(
     from app.models.class_ import ClassStudent
 
     student_ids = session.exec(
-        select(ClassStudent.student_id).where(ClassStudent.class_id == class_id)
+        select(ClassStudent.student_id).where(
+            ClassStudent.class_id == class_id,
+            ClassStudent.left_at.is_(None),
+        )
     ).all()
 
     if not student_ids:
@@ -334,11 +337,21 @@ def get_class_overview(session: Session, class_id: int) -> dict:
     from app.models.class_ import ClassStudent
 
     student_ids = session.exec(
-        select(ClassStudent.student_id).where(ClassStudent.class_id == class_id)
+        select(ClassStudent.student_id).where(
+            ClassStudent.class_id == class_id,
+            ClassStudent.left_at.is_(None),
+        )
     ).all()
 
     if not student_ids:
-        return {"student_count": 0}
+        return {
+            "class_id": class_id,
+            "student_count": 0,
+            "total_homework": 0,
+            "avg_score": None,
+            "max_score": None,
+            "min_score": None,
+        }
 
     # 整体平均分
     results = session.exec(
