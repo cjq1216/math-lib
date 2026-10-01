@@ -23,8 +23,12 @@ import {
   QUESTION_TYPE_LABEL,
   type KnowledgePoint,
   type LlmTaskStatus,
+  type QuestionAnswer,
   type QuestionDetail,
+  type QuestionMatchRule,
+  type QuestionMediaItem,
   type QuestionType,
+  type SubQuestion,
 } from "@/lib/types";
 
 interface Props {
@@ -47,7 +51,20 @@ function flattenKps(nodes: KnowledgePoint[], prefix = "", out: KpPick[] = []): K
   return out;
 }
 
-const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+function sleep(ms: number): Promise<void> {
+  const { promise, resolve } = Promise.withResolvers<void>();
+  setTimeout(resolve, ms);
+  return promise;
+}
+
+const RULE_TYPE_LABEL: Record<string, string> = {
+  exact: "精确匹配 (文本去除空格后完全一致)",
+  allow_set: "候选集合 (命中任一备选答案即算对)",
+  numeric: "数值误差 (允许指定绝对误差)",
+  fraction: "分数与小数等价 (如 1/2 == 0.5)",
+  regex: "正则表达式 (符合自定义模式)",
+  unordered_set: "无序解集 (如 x=1, x=2 与顺序无关)",
+};
 
 export function QuestionEditor({ initial }: Props) {
   const router = useRouter();
@@ -55,6 +72,7 @@ export function QuestionEditor({ initial }: Props) {
 
   const isEdit = Boolean(initial?.id);
 
+  // 基础题面
   const [stem, setStem] = React.useState(initial?.stem ?? "");
   const [qtype, setQtype] = React.useState<QuestionType>(initial?.question_type ?? "choice_single");
   const [difficulty, setDifficulty] = React.useState(initial?.difficulty ?? 3);
@@ -65,18 +83,54 @@ export function QuestionEditor({ initial }: Props) {
   const [answer, setAnswer] = React.useState(initial?.answer ?? "");
   const [analysis, setAnalysis] = React.useState(initial?.analysis ?? "");
   const [tagsText, setTagsText] = React.useState((initial?.tags ?? []).join(", "));
+  const [isVerified, setIsVerified] = React.useState(initial?.is_verified ?? false);
 
-  const [subs, setSubs] = React.useState<{ label: string; stem: string; score: number; answer: string }[]>(
+  // 小问（复合题）
+  const [subs, setSubs] = React.useState<SubQuestion[]>(
     initial?.sub_questions?.length
       ? initial.sub_questions.map((s) => ({
+          id: s.id,
           label: s.label,
           stem: s.stem ?? "",
           score: s.score,
           answer: s.answer ?? "",
+          analysis: s.analysis ?? "",
+          display_order: s.display_order ?? 0,
         }))
       : [],
   );
 
+  // 多空答案与等价匹配规则
+  const [answers, setAnswers] = React.useState<QuestionAnswer[]>(
+    initial?.answers?.length
+      ? initial.answers.map((a) => ({
+          id: a.id,
+          blank_index: a.blank_index,
+          answer_text: a.answer_text,
+          is_primary: a.is_primary,
+          match_rule: a.match_rule ?? { rule_type: "exact" },
+        }))
+      : [],
+  );
+
+  // 媒体关联
+  const [mediaItems, setMediaItems] = React.useState<QuestionMediaItem[]>(
+    initial?.media_items?.length
+      ? initial.media_items.map((m) => ({
+          id: m.id,
+          media_id: m.media_id,
+          usage_type: m.usage_type,
+          display_order: m.display_order ?? 0,
+          alt_text: m.alt_text ?? "",
+          caption: m.caption ?? "",
+          access_url: m.access_url,
+          original_name: m.original_name,
+        }))
+      : [],
+  );
+  const [uploadingMedia, setUploadingMedia] = React.useState(false);
+
+  // 知识点
   const [kpList, setKpList] = React.useState<KpPick[]>([]);
   const [kpKeyword, setKpKeyword] = React.useState("");
   const [selectedKps, setSelectedKps] = React.useState<number[]>(
@@ -142,6 +196,36 @@ export function QuestionEditor({ initial }: Props) {
     }
   }
 
+  // 媒体上传
+  async function onUploadMediaFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploadingMedia(true);
+    try {
+      const res = await http.upload<{ id: number; url: string; uuid: string }>("/api/v1/media/upload", file);
+      const cleanName = file.name.replace(/\.[^/.]+$/, "");
+      setMediaItems((prev) => [
+        ...prev,
+        {
+          media_id: res.id,
+          usage_type: "stem",
+          display_order: prev.length,
+          caption: cleanName,
+          alt_text: cleanName,
+          access_url: res.url,
+          original_name: file.name,
+        },
+      ]);
+      show("图片上传成功", "success");
+    } catch (err) {
+      show(err instanceof Error ? err.message : "图片上传失败", "error");
+    } finally {
+      setUploadingMedia(false);
+      e.target.value = "";
+    }
+  }
+
+  // 单事务聚合保存
   async function save(goList: boolean) {
     if (!stem.trim()) return show("题干不能为空", "error");
     setSaving(true);
@@ -158,6 +242,33 @@ export function QuestionEditor({ initial }: Props) {
           .split(/[,，]/)
           .map((s) => s.trim())
           .filter(Boolean),
+        is_verified: isVerified,
+        sub_questions: subs.map((s, idx) => ({
+          label: s.label || `(${idx + 1})`,
+          stem: s.stem ?? "",
+          score: Number(s.score) || 0,
+          answer: s.answer ?? "",
+          analysis: s.analysis ?? "",
+          display_order: idx,
+        })),
+        answers: answers.map((a, idx) => ({
+          blank_index: Number(a.blank_index) || idx + 1,
+          answer_text: a.answer_text,
+          is_primary: a.is_primary,
+          match_rule: a.match_rule,
+        })),
+        knowledge_points: selectedKps.map((id) => ({
+          kp_id: id,
+          is_primary: id === primaryKp,
+          weight: 1.0,
+        })),
+        media_items: mediaItems.map((m, idx) => ({
+          media_id: m.media_id,
+          usage_type: m.usage_type,
+          display_order: idx,
+          caption: m.caption,
+          alt_text: m.alt_text,
+        })),
       };
 
       let qid = initial?.id;
@@ -168,14 +279,7 @@ export function QuestionEditor({ initial }: Props) {
         qid = r.id;
       }
 
-      // 知识点关联
-      await http.put(`/api/v1/questions/${qid}/knowledge`, {
-        items: selectedKps.map((id) => ({ kp_id: id, is_primary: id === primaryKp })),
-      });
-      // 小问
-      await http.put(`/api/v1/questions/${qid}/sub-questions`, { items: subs });
-
-      show("保存成功", "success");
+      show("单事务聚合保存成功", "success");
       if (goList) router.push("/questions");
       else if (!isEdit) router.push(`/questions/${qid}/edit`);
     } catch (e) {
@@ -187,14 +291,31 @@ export function QuestionEditor({ initial }: Props) {
 
   return (
     <div className="grid gap-6 lg:grid-cols-[1fr_360px]">
-      {/* 左侧：题面 */}
+      {/* 左侧：题面、小问、多空规则、媒体 */}
       <div className="space-y-4">
+        {/* 基础题面 */}
         <Card>
-          <CardHeader className="flex items-center justify-between">
-            <CardTitle>{isEdit ? `编辑题目 #${initial?.id}` : "新建题目"}</CardTitle>
-            <Button variant="outline" size="sm" onClick={onAutoTag}>
-              AI 自动打标
-            </Button>
+          <CardHeader className="flex flex-row items-center justify-between">
+            <div className="flex items-center gap-3">
+              <CardTitle>{isEdit ? `编辑题目 #${initial?.id}` : "新建题目"}</CardTitle>
+              <Badge tone={isVerified ? "success" : "warning"}>
+                {isVerified ? "已校对" : "待校对"}
+              </Badge>
+            </div>
+            <div className="flex items-center gap-2">
+              <label className="flex cursor-pointer items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground">
+                <input
+                  type="checkbox"
+                  className="h-4 w-4 rounded"
+                  checked={isVerified}
+                  onChange={(e) => setIsVerified(e.target.checked)}
+                />
+                标记为已校对
+              </label>
+              <Button variant="outline" size="sm" onClick={onAutoTag}>
+                AI 自动打标
+              </Button>
+            </div>
           </CardHeader>
           <CardContent className="space-y-4">
             <div>
@@ -208,7 +329,7 @@ export function QuestionEditor({ initial }: Props) {
 
             <div className="rounded-md border border-border bg-muted/40 p-3">
               <div className="mb-1 text-xs text-muted-foreground">实时预览</div>
-              <MathText className="text-sm leading-relaxed" >{stem}</MathText>
+              <MathText className="text-sm leading-relaxed">{stem}</MathText>
             </div>
 
             <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
@@ -287,7 +408,7 @@ export function QuestionEditor({ initial }: Props) {
             )}
 
             <div>
-              <Label>答案</Label>
+              <Label>主答案（主观题或选择题答案）</Label>
               <Textarea value={answer} onChange={(e) => setAnswer(e.target.value)} placeholder="如：$x=2$ 或 $x=3$" />
             </div>
 
@@ -298,37 +419,348 @@ export function QuestionEditor({ initial }: Props) {
           </CardContent>
         </Card>
 
+        {/* 多空答案与等价规则 */}
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between">
+            <div>
+              <CardTitle>多空独立答案与等价规则</CardTitle>
+              <p className="text-xs text-muted-foreground">
+                支持填空题多空独立打分、集合备选答案、数值误差、分数小数等价与正则匹配
+              </p>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() =>
+                setAnswers([
+                  ...answers,
+                  {
+                    blank_index: answers.length + 1,
+                    answer_text: "",
+                    is_primary: true,
+                    match_rule: { rule_type: "exact" },
+                  },
+                ])
+              }
+            >
+              + 加一个空
+            </Button>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {answers.length === 0 ? (
+              <p className="text-sm text-muted-foreground">暂未配置多空答案，单空题可直接使用上方主答案。</p>
+            ) : (
+              answers.map((a, i) => {
+                const currentRule = a.match_rule || {};
+                const ruleType = currentRule.rule_type || "exact";
+                return (
+                  <div key={i} className="space-y-2 rounded-md border border-border bg-card/60 p-3 text-sm">
+                    <div className="grid gap-2 md:grid-cols-[100px_1fr_160px_auto]">
+                      <div>
+                        <Label>空号</Label>
+                        <Input
+                          type="number"
+                          min={1}
+                          value={a.blank_index}
+                          onChange={(e) => {
+                            const n = [...answers];
+                            n[i] = { ...a, blank_index: Number(e.target.value) || 1 };
+                            setAnswers(n);
+                          }}
+                        />
+                      </div>
+                      <div>
+                        <Label>标准答案文本</Label>
+                        <Input
+                          placeholder="例如: 1/2 或 0.5"
+                          value={a.answer_text}
+                          onChange={(e) => {
+                            const n = [...answers];
+                            n[i] = { ...a, answer_text: e.target.value };
+                            setAnswers(n);
+                          }}
+                        />
+                      </div>
+                      <div>
+                        <Label>等价匹配规则</Label>
+                        <Select
+                          value={ruleType}
+                          onChange={(e) => {
+                            const n = [...answers];
+                            const newType = e.target.value as QuestionMatchRule["rule_type"];
+                            n[i] = {
+                              ...a,
+                              match_rule: { ...currentRule, rule_type: newType },
+                            };
+                            setAnswers(n);
+                          }}
+                        >
+                          {Object.entries(RULE_TYPE_LABEL).map(([v, l]) => (
+                            <option key={v} value={v}>
+                              {l}
+                            </option>
+                          ))}
+                        </Select>
+                      </div>
+                      <div className="flex items-end">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setAnswers(answers.filter((_, idx) => idx !== i))}
+                        >
+                          删
+                        </Button>
+                      </div>
+                    </div>
+
+                    {/* 规则特定参数 */}
+                    {ruleType === "allow_set" && (
+                      <div className="rounded bg-muted/40 p-2 text-xs">
+                        <Label>允许的备选答案列表（逗号分隔）</Label>
+                        <Input
+                          placeholder="例如: 0.5, 1/2, 50%"
+                          value={(currentRule.allow_set || []).join(", ")}
+                          onChange={(e) => {
+                            const n = [...answers];
+                            const list = e.target.value.split(/[,，]/).map((s) => s.trim()).filter(Boolean);
+                            n[i] = {
+                              ...a,
+                              match_rule: { ...currentRule, allow_set: list },
+                            };
+                            setAnswers(n);
+                          }}
+                        />
+                      </div>
+                    )}
+
+                    {ruleType === "numeric" && (
+                      <div className="grid grid-cols-2 gap-2 rounded bg-muted/40 p-2 text-xs">
+                        <div>
+                          <Label>绝对允许容差（tolerance）</Label>
+                          <Input
+                            type="number"
+                            step="0.001"
+                            placeholder="默认: 0.0001"
+                            value={currentRule.tolerance ?? 0.0001}
+                            onChange={(e) => {
+                              const n = [...answers];
+                              n[i] = {
+                                ...a,
+                                match_rule: { ...currentRule, tolerance: Number(e.target.value) },
+                              };
+                              setAnswers(n);
+                            }}
+                          />
+                        </div>
+                      </div>
+                    )}
+
+                    {ruleType === "regex" && (
+                      <div className="rounded bg-muted/40 p-2 text-xs">
+                        <Label>正则表达式匹配模式</Label>
+                        <Input
+                          placeholder="例如: ^[xX]\\s*=\\s*\\d+$"
+                          value={currentRule.pattern || ""}
+                          onChange={(e) => {
+                            const n = [...answers];
+                            n[i] = {
+                              ...a,
+                              match_rule: { ...currentRule, pattern: e.target.value },
+                            };
+                            setAnswers(n);
+                          }}
+                        />
+                      </div>
+                    )}
+                  </div>
+                );
+              })
+            )}
+          </CardContent>
+        </Card>
+
         {/* 小问 */}
         <Card>
-          <CardHeader className="flex items-center justify-between">
+          <CardHeader className="flex flex-row items-center justify-between">
             <CardTitle>小问（复合题可拆，用于独立给分与学情聚合）</CardTitle>
-            <Button variant="outline" size="sm" onClick={() => setSubs([...subs, { label: `(${subs.length + 1})`, stem: "", score: 0, answer: "" }])}>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() =>
+                setSubs([
+                  ...subs,
+                  { label: `(${subs.length + 1})`, stem: "", score: 0, answer: "", analysis: "" },
+                ])
+              }
+            >
               + 加小问
             </Button>
           </CardHeader>
           <CardContent className="space-y-3">
-            {subs.length === 0 && (
+            {subs.length === 0 ? (
               <p className="text-sm text-muted-foreground">无小问。单道题可留空。</p>
+            ) : (
+              subs.map((s, i) => (
+                <div
+                  key={i}
+                  className="grid gap-2 rounded-md border border-border p-3 md:grid-cols-[80px_1fr_90px_1fr_auto]"
+                >
+                  <Input
+                    value={s.label}
+                    onChange={(e) => {
+                      const n = [...subs];
+                      n[i] = { ...s, label: e.target.value };
+                      setSubs(n);
+                    }}
+                  />
+                  <Input
+                    placeholder="小问题干"
+                    value={s.stem ?? ""}
+                    onChange={(e) => {
+                      const n = [...subs];
+                      n[i] = { ...s, stem: e.target.value };
+                      setSubs(n);
+                    }}
+                  />
+                  <Input
+                    type="number"
+                    step="0.5"
+                    placeholder="分值"
+                    value={s.score}
+                    onChange={(e) => {
+                      const n = [...subs];
+                      n[i] = { ...s, score: Number(e.target.value) };
+                      setSubs(n);
+                    }}
+                  />
+                  <Input
+                    placeholder="小问答案"
+                    value={s.answer ?? ""}
+                    onChange={(e) => {
+                      const n = [...subs];
+                      n[i] = { ...s, answer: e.target.value };
+                      setSubs(n);
+                    }}
+                  />
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setSubs(subs.filter((_, idx) => idx !== i))}
+                  >
+                    删
+                  </Button>
+                </div>
+              ))
             )}
-            {subs.map((s, i) => (
-              <div key={i} className="grid gap-2 rounded-md border border-border p-3 md:grid-cols-[80px_1fr_90px_1fr_auto]">
-                <Input value={s.label} onChange={(e) => {
-                  const n = [...subs]; n[i] = { ...s, label: e.target.value }; setSubs(n);
-                }} />
-                <Input placeholder="小问题干" value={s.stem} onChange={(e) => {
-                  const n = [...subs]; n[i] = { ...s, stem: e.target.value }; setSubs(n);
-                }} />
-                <Input type="number" step="0.5" placeholder="分值" value={s.score} onChange={(e) => {
-                  const n = [...subs]; n[i] = { ...s, score: Number(e.target.value) }; setSubs(n);
-                }} />
-                <Input placeholder="小问答案" value={s.answer} onChange={(e) => {
-                  const n = [...subs]; n[i] = { ...s, answer: e.target.value }; setSubs(n);
-                }} />
-                <Button variant="ghost" size="sm" onClick={() => setSubs(subs.filter((_, idx) => idx !== i))}>
-                  删
-                </Button>
+          </CardContent>
+        </Card>
+
+        {/* 媒体配图 */}
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between">
+            <div>
+              <CardTitle>题目配图与媒体附件</CardTitle>
+              <p className="text-xs text-muted-foreground">
+                支持 PNG / JPG / SVG 格式，上传后自动排重；可一键将图片代码插入题干或解析
+              </p>
+            </div>
+            <label className="cursor-pointer">
+              <span className="inline-flex items-center justify-center rounded-md border border-input bg-background px-3 py-1.5 text-xs font-medium hover:bg-accent hover:text-accent-foreground">
+                {uploadingMedia ? "上传中..." : "+ 上传图片"}
+              </span>
+              <input
+                type="file"
+                className="hidden"
+                accept="image/png,image/jpeg,image/webp,image/svg+xml"
+                disabled={uploadingMedia}
+                onChange={onUploadMediaFile}
+              />
+            </label>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {mediaItems.length === 0 ? (
+              <p className="text-sm text-muted-foreground">暂无关联配图。可点击上方按钮上传配图。</p>
+            ) : (
+              <div className="grid gap-3 sm:grid-cols-2">
+                {mediaItems.map((m, i) => (
+                  <div key={i} className="flex gap-3 rounded-md border border-border p-3">
+                    {m.access_url && (
+                      <div className="h-16 w-16 flex-shrink-0 overflow-hidden rounded bg-muted/30">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={m.access_url}
+                          alt={m.caption || "配图"}
+                          className="h-full w-full object-contain"
+                        />
+                      </div>
+                    )}
+                    <div className="flex-1 space-y-1.5 text-xs">
+                      <div className="flex items-center justify-between">
+                        <span className="font-medium truncate max-w-[120px]">{m.original_name || `图片 #${m.media_id}`}</span>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-6 px-1.5 text-xs text-red-600"
+                          onClick={() => setMediaItems(mediaItems.filter((_, idx) => idx !== i))}
+                        >
+                          移除
+                        </Button>
+                      </div>
+                      <div className="grid grid-cols-2 gap-1.5">
+                        <Select
+                          value={m.usage_type}
+                          onChange={(e) => {
+                            const n = [...mediaItems];
+                            n[i] = { ...m, usage_type: e.target.value as QuestionMediaItem["usage_type"] };
+                            setMediaItems(n);
+                          }}
+                        >
+                          <option value="stem">题干图</option>
+                          <option value="option">选项图</option>
+                          <option value="analysis">解析图</option>
+                          <option value="attachment">附件</option>
+                        </Select>
+                        <Input
+                          placeholder="说明/图号"
+                          value={m.caption || ""}
+                          onChange={(e) => {
+                            const n = [...mediaItems];
+                            n[i] = { ...m, caption: e.target.value };
+                            setMediaItems(n);
+                          }}
+                        />
+                      </div>
+                      {m.access_url && (
+                        <div className="flex gap-2 pt-1">
+                          <button
+                            type="button"
+                            className="text-primary hover:underline text-[11px]"
+                            onClick={() => {
+                              const tag = `\n![${m.caption || "配图"}](${m.access_url})\n`;
+                              setStem((prev) => prev + tag);
+                              show("已将图片插入题干末尾", "info");
+                            }}
+                          >
+                            插入题干
+                          </button>
+                          <button
+                            type="button"
+                            className="text-primary hover:underline text-[11px]"
+                            onClick={() => {
+                              const tag = `\n![${m.caption || "解析图"}](${m.access_url})\n`;
+                              setAnalysis((prev) => prev + tag);
+                              show("已将图片插入解析末尾", "info");
+                            }}
+                          >
+                            插入解析
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ))}
               </div>
-            ))}
+            )}
           </CardContent>
         </Card>
       </div>
@@ -365,14 +797,22 @@ export function QuestionEditor({ initial }: Props) {
                         }
                       }}
                     />
-                    <span className="flex-1 cursor-pointer text-sm" onClick={() => {
-                      setSelectedKps(checked ? selectedKps.filter((x) => x !== k.id) : [...selectedKps, k.id]);
-                    }}>
+                    <span
+                      className="flex-1 cursor-pointer text-sm"
+                      onClick={() => {
+                        setSelectedKps(
+                          checked ? selectedKps.filter((x) => x !== k.id) : [...selectedKps, k.id],
+                        );
+                      }}
+                    >
                       {k.path}
                     </span>
                     {checked && (
                       <button
-                        className={"rounded px-1.5 py-0.5 text-xs " + (primaryKp === k.id ? "bg-blue-600 text-white" : "bg-muted")}
+                        className={
+                          "rounded px-1.5 py-0.5 text-xs " +
+                          (primaryKp === k.id ? "bg-blue-600 text-white" : "bg-muted")
+                        }
                         onClick={() => setPrimaryKp(primaryKp === k.id ? null : k.id)}
                         title="设为主知识点"
                       >
@@ -390,9 +830,9 @@ export function QuestionEditor({ initial }: Props) {
         </Card>
 
         <Card>
-          <CardContent className="space-y-2">
+          <CardContent className="space-y-2 pt-6">
             <Button className="w-full" onClick={() => save(false)} disabled={saving}>
-              {saving ? "保存中..." : "保存"}
+              {saving ? "单事务保存中..." : "保存"}
             </Button>
             <Button variant="outline" className="w-full" onClick={() => save(true)} disabled={saving}>
               保存并返回列表
@@ -405,7 +845,7 @@ export function QuestionEditor({ initial }: Props) {
 
         {task && (
           <Card>
-            <CardContent className="space-y-2">
+            <CardContent className="space-y-2 pt-6">
               <div className="flex items-center justify-between text-sm">
                 <Badge tone={task.status === "failed" ? "danger" : "info"}>
                   {task.status === "pending" && "排队中"}

@@ -31,6 +31,7 @@ class KnowledgePointUpdate(StrictSchema):
     subject: str | None = Field(default=None, max_length=32)
     description: str | None = None
     display_order: int | None = None
+    is_active: bool | None = None
 
 
 class KnowledgePointRead(StrictSchema):
@@ -45,11 +46,45 @@ class KnowledgePointRead(StrictSchema):
     difficulty_hint: int | None = None
     subject: str = "math"
     description: str | None = None
+    display_order: int = 0
+    is_active: bool = True
     children: list["KnowledgePointRead"] | None = None
 
 
+class KnowledgeImportItem(StrictSchema):
+    code: str = Field(min_length=1, max_length=32)
+    name: str = Field(min_length=1, max_length=128)
+    parent_id: int | None = None
+    parent_code: str | None = Field(default=None, max_length=32)
+    grade: int | None = Field(default=None, ge=7, le=9)
+    semester: str | None = Field(default=None, max_length=16)
+    chapter: str | None = Field(default=None, max_length=64)
+    section: str | None = Field(default=None, max_length=64)
+    difficulty_hint: int | None = Field(default=None, ge=1, le=5)
+    subject: str = Field(default="math", max_length=32)
+    description: str | None = None
+    display_order: int = 0
+
+
 class KnowledgeImportRequest(StrictSchema):
-    items: list[KnowledgePointCreate]
+    items: list[KnowledgeImportItem]
+
+
+class KnowledgePointExportItem(StrictSchema):
+    id: int
+    code: str
+    name: str
+    parent_id: int | None = None
+    parent_code: str | None = None
+    grade: int | None = None
+    semester: str | None = None
+    chapter: str | None = None
+    section: str | None = None
+    difficulty_hint: int | None = None
+    subject: str = "math"
+    description: str | None = None
+    display_order: int = 0
+    is_active: bool = True
 
 
 class TargetedPracticeRequest(StrictSchema):

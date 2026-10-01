@@ -40,6 +40,7 @@ Thumbs.db
 out/
 dist/
 build/
+*.tsbuildinfo
 
 # 日志
 *.log

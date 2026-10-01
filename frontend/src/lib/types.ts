@@ -148,6 +148,38 @@ export const DIFFICULTY_LABEL: Record<number, string> = {
   5: "5 很难",
 };
 
+export interface QuestionMatchRule {
+  rule_type?: "exact" | "allow_set" | "numeric" | "fraction" | "regex" | "unordered_set";
+  allow_set?: string[];
+  tolerance?: number;
+  pattern?: string;
+  case_sensitive?: boolean;
+  delimiter?: string;
+}
+
+export interface QuestionMediaItem {
+  id?: number;
+  media_id: number;
+  usage_type: "stem" | "option" | "analysis" | "attachment";
+  display_order?: number;
+  alt_text?: string | null;
+  caption?: string | null;
+  access_url?: string | null;
+  original_name?: string | null;
+}
+
+export interface MediaResourceItem {
+  id: number;
+  uuid: string;
+  original_name: string;
+  url?: string | null;
+  width?: number | null;
+  height?: number | null;
+  file_size: number;
+  mime_type?: string | null;
+  reference_count: number;
+}
+
 export interface Question {
   id: number;
   stem: string;
@@ -159,28 +191,33 @@ export interface Question {
   analysis?: string | null;
   tags?: string[] | null;
   is_verified?: boolean;
+  checksum?: string | null;
   created_at?: string;
 }
 
 export interface QuestionDetail extends Question {
   sub_questions?: SubQuestion[];
   answers?: QuestionAnswer[];
-  knowledge_points?: { kp_id: number; is_primary: boolean }[];
+  knowledge_points?: { kp_id: number; is_primary: boolean; weight?: number }[];
+  media_items?: QuestionMediaItem[];
 }
 
 export interface SubQuestion {
-  id: number;
+  id?: number;
   label: string;
   stem?: string | null;
   score: number;
   answer?: string | null;
+  analysis?: string | null;
+  display_order?: number;
 }
 
 export interface QuestionAnswer {
-  id: number;
+  id?: number;
   blank_index: number;
   answer_text: string;
   is_primary: boolean;
+  match_rule?: QuestionMatchRule | null;
 }
 
 export interface KnowledgePoint {
@@ -188,10 +225,16 @@ export interface KnowledgePoint {
   code?: string | null;
   name: string;
   parent_id?: number | null;
+  parent_code?: string | null;
   grade?: number | null;
   semester?: string | null;
   chapter?: string | null;
+  section?: string | null;
   difficulty_hint?: number | null;
+  subject?: string;
+  description?: string | null;
+  display_order?: number;
+  is_active?: boolean;
   children?: KnowledgePoint[];
 }
 
