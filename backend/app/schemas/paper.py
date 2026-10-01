@@ -9,12 +9,14 @@ from app.schemas.common import StrictSchema
 
 
 class PaperConstraint(StrictSchema):
-    total_score: float = Field(default=100, gt=0)
+    total_score: float = Field(default=100.0, gt=0)
     duration_minutes: int = Field(default=90, ge=1)
     type_distribution: dict[str, int] = Field(default_factory=dict)
     difficulty_ratio: dict[str, float] = Field(default_factory=dict)
     required_kps: list[int] = Field(default_factory=list)
     forbidden_kps: list[int] = Field(default_factory=list)
+    seed: int | None = None
+    type_scores: dict[str, float] | None = None
 
     @model_validator(mode="after")
     def validate_knowledge_sets(self):
@@ -31,7 +33,7 @@ class PaperConstraint(StrictSchema):
 class PaperCreate(StrictSchema):
     title: str = Field(min_length=1, max_length=255)
     description: str | None = None
-    total_score: float = Field(default=100, gt=0)
+    total_score: float = Field(default=100.0, gt=0)
     duration_minutes: int = Field(default=90, ge=1)
     grade: int | None = Field(default=None, ge=7, le=9)
     semester: str | None = Field(default=None, max_length=16)
@@ -90,5 +92,30 @@ class PaperGenerateResponse(StrictSchema):
     questions: list[PaperGenerateQuestion]
 
 
+class PaperQuestionUpdatePayload(StrictSchema):
+    score: float | None = Field(default=None, gt=0)
+    section: str | None = None
+    display_order: int | None = Field(default=None, ge=1)
+
+
+class PaperQuestionReplaceRequest(StrictSchema):
+    target_question_id: int | None = None
+
+
+class PaperQuestionAddRequest(StrictSchema):
+    question_id: int = Field(gt=0)
+    score: float = Field(default=5.0, gt=0)
+    section: str | None = None
+
+
+class PaperQuestionOrderItem(StrictSchema):
+    paper_question_id: int = Field(gt=0)
+    display_order: int = Field(ge=1)
+
+
+class PaperQuestionsReorderRequest(StrictSchema):
+    items: list[PaperQuestionOrderItem]
+
+
 class ExportRequest(StrictSchema):
-    format: str = Field(default="word", pattern="^(word|markdown|pdf)$")
+    format: str = Field(default="word", pattern="^(word|markdown)$")

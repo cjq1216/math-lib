@@ -256,7 +256,7 @@ export interface PaperQuestionItem {
   stem: string;
   answer?: string | null;
   analysis?: string | null;
-  options?: unknown;
+  options?: string[] | null;
 }
 
 export interface PaperDetail {
@@ -276,8 +276,26 @@ export interface PaperConstraint {
   difficulty_ratio: Record<string, number>;
   required_kps: number[];
   forbidden_kps: number[];
+  seed?: number | null;
+  type_scores?: Record<string, number> | null;
 }
 
+export interface ConstraintUnsatisfiableDetail {
+  error: "constraint_unsatisfiable";
+  message: string;
+  missing_types?: Record<string, { needed: number; available: number; shortage: number }>;
+  missing_required_kps?: number[];
+}
+
+export interface PaperQuestionUpdatePayload {
+  score?: number;
+  section?: string | null;
+  display_order?: number;
+}
+
+export interface PaperQuestionReplacePayload {
+  target_question_id?: number | null;
+}
 export interface ClassItem {
   id: number;
   name: string;
