@@ -6,32 +6,39 @@ import { usePathname, useRouter } from "next/navigation";
 import { useAuth } from "./AuthProvider";
 import { Button, Loading } from "./ui";
 
-const NAV = [
+const NAV: { href: string; label: string; adminOnly?: boolean }[] = [
   { href: "/questions", label: "题库" },
   { href: "/knowledge", label: "知识点" },
   { href: "/papers", label: "组卷" },
   { href: "/classes", label: "班级" },
+  { href: "/students", label: "学生" },
   { href: "/homework", label: "作业" },
   { href: "/analytics", label: "学情" },
+  { href: "/users", label: "用户管理", adminOnly: true },
 ];
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
-  const { user, loading, logout } = useAuth();
+  const { user, loading, bootstrapLoading, isAdmin, logout } = useAuth();
   const [logoutFailed, setLogoutFailed] = React.useState(false);
   const isLoginPage = pathname === "/login";
 
   React.useEffect(() => {
-    if (loading) return;
+    if (loading || bootstrapLoading) return;
     if (!user && !isLoginPage) {
       router.replace(`/login?next=${encodeURIComponent(pathname)}`);
     } else if (user && isLoginPage) {
       router.replace("/");
     }
-  }, [isLoginPage, loading, pathname, router, user]);
+  }, [bootstrapLoading, isLoginPage, loading, pathname, router, user]);
 
-  if (loading || (!user && !isLoginPage) || (user && isLoginPage)) {
+  if (
+    loading ||
+    bootstrapLoading ||
+    (!user && !isLoginPage) ||
+    (user && isLoginPage)
+  ) {
     return (
       <main className="flex min-h-screen items-center justify-center p-4">
         <Loading text="正在验证登录状态..." />
@@ -59,7 +66,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             数学题库
           </Link>
           <nav className="flex flex-1 items-center gap-1 overflow-x-auto text-sm">
-            {NAV.map((item) => {
+            {NAV.filter((item) => !item.adminOnly || isAdmin).map((item) => {
               const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
               return (
                 <Link

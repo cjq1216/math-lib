@@ -20,7 +20,7 @@ from app.core.security import (
 )
 from app.models.auth_session import AuthSession
 from app.models.user import User, UserRole
-from app.schemas.auth import AuthResponse, RegisterRequest
+from app.schemas.auth import AuthResponse, BootstrapStatus, RegisterRequest
 from app.schemas.common import OkResponse
 from app.schemas.user import UserRead
 from app.services.audit_service import add_audit_event
@@ -136,6 +136,15 @@ def login(
     session.commit()
     _set_refresh_cookie(response, refresh_token)
     return AuthResponse(access_token=access_token, user=user)
+
+
+@router.get("/bootstrap-status", response_model=BootstrapStatus)
+def bootstrap_status(
+    session: Annotated[Session, Depends(get_session)],
+) -> BootstrapStatus:
+    """返回 users 表是否为空，供首启注册表单切换使用；无敏感字段。"""
+    has_users = session.exec(select(User.id).limit(1)).first() is not None
+    return BootstrapStatus(has_users=has_users)
 
 
 @router.post("/register", response_model=AuthResponse)

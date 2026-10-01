@@ -1,8 +1,7 @@
 "use client";
 
 import * as React from "react";
-import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { http } from "@/lib/api";
 import {
   Badge,
@@ -17,307 +16,243 @@ import {
   Label,
   Loading,
   Select,
+  Textarea,
   useToast,
 } from "@/components/ui";
+import { useIsAdmin } from "@/components/useIsAdmin";
+import { ClassRosterCard } from "@/components/ClassRosterCard";
 import type {
   ClassItem,
   ClassOverview,
-  ImportErrorItem,
   RankRow,
-  StudentItem,
 } from "@/lib/types";
-
-interface StudentRow {
-  id: number;
-  student_no?: string | null;
-  name: string;
-  gender?: string | null;
-  grade: number;
-  phone?: string | null;
-  average_score?: number | null;
-}
 
 export default function ClassDetailPage() {
   const params = useParams<{ id: string }>();
   const id = params?.id;
+  const router = useRouter();
+  const isAdmin = useIsAdmin();
   const { show, node } = useToast();
 
   const [cls, setCls] = React.useState<ClassItem | null>(null);
-  const [students, setStudents] = React.useState<StudentItem[]>([]);
   const [overview, setOverview] = React.useState<ClassOverview | null>(null);
   const [ranking, setRanking] = React.useState<RankRow[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState("");
 
-  const [allStudents, setAllStudents] = React.useState<StudentRow[]>([]);
-  const [addId, setAddId] = React.useState("");
-  const [newStudent, setNewStudent] = React.useState({ student_no: "", name: "", gender: "男" });
+  const [editing, setEditing] = React.useState(false);
+  const [editForm, setEditForm] = React.useState({ name: "", grade: 7, semester: "上", notes: "" });
+  const [savingEdit, setSavingEdit] = React.useState(false);
+
+  const [toggling, setToggling] = React.useState(false);
 
   const reload = React.useCallback(() => {
     if (!id) return;
     setLoading(true);
     Promise.all([
-      http.get<ClassItem[]>(`/api/v1/classes/`),
-      http.get<StudentItem[]>(`/api/v1/classes/${id}/students`),
+      http.get<ClassItem>(`/api/v1/classes/${id}`),
       http.get<ClassOverview>(`/api/v1/analytics/classes/${id}/overview`),
       http.get<RankRow[]>(`/api/v1/analytics/classes/${id}/ranking`),
     ])
-      .then(([list, stus, ov, rank]) => {
-        setCls(list.find((c) => String(c.id) === String(id)) ?? null);
-        setStudents(Array.isArray(stus) ? stus : []);
+      .then(([c, ov, rank]) => {
+        setCls(c);
         setOverview(ov);
         setRanking(Array.isArray(rank) ? rank : []);
+        setEditForm({
+          name: c.name,
+          grade: c.grade,
+          semester: c.semester,
+          notes: c.notes ?? "",
+        });
         setError("");
       })
-      .catch((e) => setError(e.message))
+      .catch((e) => setError(e instanceof Error ? e.message : "加载失败"))
       .finally(() => setLoading(false));
   }, [id]);
 
   React.useEffect(reload, [reload]);
 
-  React.useEffect(() => {
-    if (!cls) return;
-    http
-      .get<StudentRow[]>(`/api/v1/students/?grade=${cls.grade}&limit=200`)
-      .then((d) => setAllStudents(Array.isArray(d) ? d : []))
-      .catch(() => {});
-  }, [cls]);
-
-  async function addExisting() {
-    if (!addId) return show("请选择学生", "error");
+  async function saveEdit() {
+    if (!editForm.name.trim()) return show("班级名称必填", "error");
+    setSavingEdit(true);
     try {
-      await http.post(`/api/v1/classes/${id}/students/${addId}`, {});
-      show("已加入班级", "success");
-      setAddId("");
-      reload();
-    } catch (e) {
-      show(e instanceof Error ? e.message : "添加失败", "error");
-    }
-  }
-
-  async function createAndAdd() {
-    if (!newStudent.student_no.trim() || !newStudent.name.trim())
-      return show("学号和姓名必填", "error");
-    try {
-      await http.post("/api/v1/students/", {
-        student_no: newStudent.student_no.trim(),
-        name: newStudent.name.trim(),
-        gender: newStudent.gender,
-        grade: cls?.grade ?? 7,
-        class_id: Number(id),
+      await http.patch(`/api/v1/classes/${id}`, {
+        name: editForm.name.trim(),
+        grade: Number(editForm.grade),
+        semester: editForm.semester,
+        notes: editForm.notes.trim() || null,
       });
-      show("已新建并加入班级", "success");
-      setNewStudent({ student_no: "", name: "", gender: "男" });
+      show("已更新", "success");
+      setEditing(false);
       reload();
     } catch (e) {
-      show(e instanceof Error ? e.message : "创建失败", "error");
+      show(e instanceof Error ? e.message : "更新失败", "error");
+    } finally {
+      setSavingEdit(false);
     }
   }
 
-  async function importExcel(file: File) {
+  async function toggleActive() {
+    if (!cls) return;
+    const next = !cls.is_active;
+    const verb = next ? "启用" : "停用";
+    if (!confirm(`确定${verb}班级「${cls.name}」？`)) return;
+    setToggling(true);
     try {
-      const r = await http.upload<{
-        created: number;
-        updated: number;
-        errors: ImportErrorItem[];
-      }>(
-        `/api/v1/students/import?class_id=${id}`,
-        file,
-      );
-      show(`导入完成：新增 ${r.created}，更新 ${r.updated}，错误 ${r.errors.length}`, r.errors.length ? "error" : "success");
-      if (r.errors.length) console.warn(r.errors);
+      await http.post(`/api/v1/classes/${id}/${next ? "enable" : "disable"}`);
+      show(`已${verb}`, "success");
       reload();
     } catch (e) {
-      show(e instanceof Error ? e.message : "导入失败", "error");
+      show(e instanceof Error ? e.message : `${verb}失败`, "error");
+    } finally {
+      setToggling(false);
     }
   }
 
   if (loading) return <Loading />;
-  if (error) return <ErrorBox message={error} />;
-
-  const notInClass = allStudents.filter(
-    (s) => !students.some((cs) => String(cs.student_id) === String(s.id)),
-  );
+  if (error && !cls) return <ErrorBox message={error} />;
+  if (!cls) return <Empty text="班级不存在或无权访问" />;
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
+      <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold">{cls?.name ?? `班级 #${id}`}</h1>
+          <h1 className="text-2xl font-bold">{cls.name}</h1>
           <p className="text-sm text-muted-foreground">
-            {cls ? `${cls.grade} 年级 · ${cls.semester}册` : ""} · {students.length} 名学生
+            {cls.grade} 年级 · {cls.semester} 学期
+            {cls.is_active ? (
+              <Badge tone="success" className="ml-2">在用</Badge>
+            ) : (
+              <Badge tone="danger" className="ml-2">已停用</Badge>
+            )}
           </p>
         </div>
-        <div className="flex gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => http.download("/api/v1/students/template", "students_template.xlsx")}
-          >
-            下载学生模板
+        <div className="flex flex-wrap gap-2">
+          <Button variant="outline" size="sm" onClick={() => router.push("/classes")}>
+            返回班级列表
           </Button>
+          {isAdmin && !editing && (
+            <Button variant="outline" size="sm" onClick={() => setEditing(true)}>
+              编辑资料
+            </Button>
+          )}
+          {isAdmin && (
+            <Button
+              variant={cls.is_active ? "destructive" : "default"}
+              size="sm"
+              disabled={toggling}
+              onClick={() => void toggleActive()}
+            >
+              {cls.is_active ? "停用" : "启用"}
+            </Button>
+          )}
         </div>
       </div>
 
-      {/* 学情概览 */}
+      {/* 编辑资料表单 */}
+      {editing && (
+        <Card>
+          <CardHeader>
+            <CardTitle>编辑班级资料</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div className="grid gap-3 md:grid-cols-2">
+              <div>
+                <Label>班级名称</Label>
+                <Input
+                  value={editForm.name}
+                  onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <Label>年级</Label>
+                  <Select
+                    value={editForm.grade}
+                    onChange={(e) => setEditForm({ ...editForm, grade: Number(e.target.value) })}
+                  >
+                    {[7, 8, 9].map((g) => (
+                      <option key={g} value={g}>{g} 年级</option>
+                    ))}
+                  </Select>
+                </div>
+                <div>
+                  <Label>学期</Label>
+                  <Select
+                    value={editForm.semester}
+                    onChange={(e) => setEditForm({ ...editForm, semester: e.target.value })}
+                  >
+                    <option value="上">上册</option>
+                    <option value="下">下册</option>
+                  </Select>
+                </div>
+              </div>
+            </div>
+            <div>
+              <Label>备注</Label>
+              <Textarea
+                value={editForm.notes}
+                onChange={(e) => setEditForm({ ...editForm, notes: e.target.value })}
+              />
+            </div>
+            <div className="flex gap-2">
+              <Button disabled={savingEdit} onClick={saveEdit}>
+                {savingEdit ? "保存中..." : "保存"}
+              </Button>
+              <Button variant="outline" onClick={() => setEditing(false)}>
+                取消
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* 概览 stats */}
       {overview && (
-        <div className="grid gap-3 md:grid-cols-4">
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
           <StatCard label="学生数" value={overview.student_count} />
-          <StatCard label="作业次数" value={overview.total_homework ?? 0} />
-          <StatCard
-            label="平均分"
-            value={overview.avg_score != null ? overview.avg_score.toFixed(1) : "-"}
-          />
-          <StatCard
-            label="最高 / 最低"
-            value={
-              overview.max_score != null
-                ? `${overview.max_score.toFixed(0)} / ${overview.min_score?.toFixed(0) ?? "-"}`
-                : "-"
-            }
-          />
+          <StatCard label="累计作业" value={overview.total_homework} />
+          <StatCard label="平均分" value={overview.avg_score?.toFixed(1) ?? "—"} />
+          <StatCard label="最高 / 最低" value={`${overview.max_score?.toFixed(0) ?? "—"} / ${overview.min_score?.toFixed(0) ?? "—"}`} />
         </div>
       )}
 
-      <div className="grid gap-4 lg:grid-cols-[1fr_360px]">
-        <div className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>学生名单</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {students.length === 0 ? (
-                <Empty text="班级还没有学生，从右侧添加或 Excel 导入" />
-              ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="border-b border-border text-left text-xs text-muted-foreground">
-                        <th className="py-2">学号</th>
-                        <th className="py-2">姓名</th>
-                        <th className="py-2">性别</th>
-                        <th className="py-2">联系电话</th>
-                        <th className="py-2 text-right">操作</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {students.map((s) => (
-                        <tr key={s.student_id} className="border-b border-border last:border-0">
-                          <td className="py-2">{s.student_no ?? "-"}</td>
-                          <td className="py-2 font-medium">{s.name}</td>
-                          <td className="py-2">{s.gender ?? "-"}</td>
-                          <td className="py-2">{s.phone ?? "-"}</td>
-                          <td className="py-2 text-right">
-                            <Link
-                              href={`/analytics/students/${s.student_id}`}
-                              className="text-blue-600 hover:underline"
-                            >
-                              学情
-                            </Link>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+      {/* 名单区 */}
+      <ClassRosterCard classId={cls.id} />
+
+      {/* 排行 */}
+      {ranking.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>班级排行（按累计成绩）</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-1">
+              {ranking.slice(0, 20).map((r) => (
+                <div
+                  key={`${r.student_id}-${r.rank}`}
+                  className="flex items-center gap-3 rounded px-2 py-1.5 text-sm hover:bg-accent/50"
+                >
+                  <span className="w-6 text-muted-foreground">{r.rank}</span>
+                  <span className="flex-1">{r.name}</span>
+                  <span className="text-xs text-muted-foreground">{r.student_no}</span>
+                  <Badge
+                    tone={
+                      r.percentage != null && r.percentage >= 80
+                        ? "success"
+                        : r.percentage != null && r.percentage >= 60
+                          ? "warning"
+                          : "danger"
+                    }
+                  >
+                    {r.total_score?.toFixed(0) ?? "-"}
+                  </Badge>
                 </div>
-              )}
-            </CardContent>
-          </Card>
-
-          {ranking.length > 0 && (
-            <Card>
-              <CardHeader>
-                <CardTitle>班级排行（按累计成绩）</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-1">
-                  {ranking.slice(0, 20).map((r) => (
-                    <div key={`${r.student_id}-${r.rank}`} className="flex items-center gap-3 rounded px-2 py-1.5 text-sm hover:bg-accent/50">
-                      <span className="w-6 text-muted-foreground">{r.rank}</span>
-                      <span className="flex-1">{r.name}</span>
-                      <span className="text-xs text-muted-foreground">{r.student_no}</span>
-                      <Badge tone={r.percentage != null && r.percentage >= 80 ? "success" : r.percentage != null && r.percentage >= 60 ? "warning" : "danger"}>
-                        {r.total_score?.toFixed(0) ?? "-"}
-                      </Badge>
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-          )}
-        </div>
-
-        <div className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>添加已有学生</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-2">
-              <Select value={addId} onChange={(e) => setAddId(e.target.value)}>
-                <option value="">选择学生（{notInClass.length} 人可选）</option>
-                {notInClass.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.student_no} · {s.name}
-                  </option>
-                ))}
-              </Select>
-              <Button className="w-full" variant="outline" onClick={addExisting}>
-                加入班级
-              </Button>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>新建学生并加入</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-2">
-              <Input
-                placeholder="学号"
-                value={newStudent.student_no}
-                onChange={(e) => setNewStudent({ ...newStudent, student_no: e.target.value })}
-              />
-              <Input
-                placeholder="姓名"
-                value={newStudent.name}
-                onChange={(e) => setNewStudent({ ...newStudent, name: e.target.value })}
-              />
-              <Select
-                value={newStudent.gender}
-                onChange={(e) => setNewStudent({ ...newStudent, gender: e.target.value })}
-              >
-                <option value="男">男</option>
-                <option value="女">女</option>
-              </Select>
-              <Button className="w-full" variant="outline" onClick={createAndAdd}>
-                创建并加入
-              </Button>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>Excel 批量导入</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <Label>选择 .xlsx（需含 学号 / 姓名 / 年级 列）</Label>
-              <input
-                type="file"
-                accept=".xlsx,.xls"
-                className="w-full text-sm"
-                onChange={(e) => {
-                  const f = e.target.files?.[0];
-                  if (f) importExcel(f);
-                  e.target.value = "";
-                }}
-              />
-              <p className="mt-2 text-xs text-muted-foreground">
-                导入后需手动把学生加入本班（右侧「添加已有学生」）
-              </p>
-            </CardContent>
-          </Card>
-        </div>
-      </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {node}
     </div>

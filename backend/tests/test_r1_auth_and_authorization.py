@@ -363,3 +363,214 @@ def test_openapi_exposes_bearer_and_explicit_contracts(client: TestClient) -> No
     question_properties = schema["components"]["schemas"]["QuestionCreate"]["properties"]
     assert "created_by" not in question_properties
     assert "recorded_by" not in schema["components"]["schemas"]["HomeworkResultCreate"]["properties"]
+
+
+def test_bootstrap_status_empty_db(client: TestClient) -> None:
+    response = client.get("/api/v1/auth/bootstrap-status")
+    assert response.status_code == 200
+    assert response.json() == {"has_users": False}
+
+
+def test_bootstrap_status_after_register(client: TestClient) -> None:
+    _register_admin(client)
+    response = client.get("/api/v1/auth/bootstrap-status")
+    assert response.status_code == 200
+    assert response.json() == {"has_users": True}
+
+
+def test_bootstrap_status_requires_no_auth(client: TestClient) -> None:
+    """公共探测端点不应要求 Authorization 头。"""
+    response = client.get("/api/v1/auth/bootstrap-status")
+    assert response.status_code == 200
+    assert "has_users" in response.json()
+
+
+def test_bootstrap_status_no_audit_event(client: TestClient, test_engine) -> None:
+    """只读探测不应写入 AuditLog，避免审计噪音。"""
+    client.get("/api/v1/auth/bootstrap-status")
+    client.get("/api/v1/auth/bootstrap-status")
+    with Session(test_engine) as session:
+        actions = [row[0] for row in session.exec(select(AuditLog.action)).all()]
+    assert "bootstrap_status_probe" not in actions
+    assert all(action != "bootstrap_status_probe" for action in actions)
+
+
+def test_class_enable_disable_route_only_admin(client: TestClient) -> None:
+    admin_auth = _register_admin(client)
+    admin_headers = _auth_headers(admin_auth)
+    _create_user(client, admin_headers, "teacher-c")
+    teacher_headers = _auth_headers(_login(client, "teacher-c"))
+
+    created = client.post(
+        "/api/v1/classes/",
+        headers=teacher_headers,
+        json={"name": "启用测试班", "grade": 7, "semester": "上"},
+    )
+    assert created.status_code == 201, created.text
+    class_id = created.json()["id"]
+
+    # 教师不能启用 / 停用班级
+    assert client.post(
+        f"/api/v1/classes/{class_id}/disable", headers=teacher_headers
+    ).status_code == 403
+    assert client.post(
+        f"/api/v1/classes/{class_id}/enable", headers=teacher_headers
+    ).status_code == 403
+
+    # admin 停用后再启用，并写审计
+    assert client.post(
+        f"/api/v1/classes/{class_id}/disable", headers=admin_headers
+    ).status_code == 200
+    detail = client.get(
+        f"/api/v1/classes/{class_id}", headers=admin_headers
+    ).json()
+    assert detail["is_active"] is False
+
+    assert client.post(
+        f"/api/v1/classes/{class_id}/enable", headers=admin_headers
+    ).status_code == 200
+    detail = client.get(
+        f"/api/v1/classes/{class_id}", headers=admin_headers
+    ).json()
+    assert detail["is_active"] is True
+
+
+def test_student_enable_after_soft_delete(client: TestClient) -> None:
+    admin_auth = _register_admin(client)
+    admin_headers = _auth_headers(admin_auth)
+
+    created = client.post(
+        "/api/v1/students/",
+        headers=admin_headers,
+        json={"student_no": "S-R1", "name": "启用测试生", "grade": 7},
+    )
+    assert created.status_code == 201, created.text
+    student_id = created.json()["id"]
+
+    # 软删后再启用（依赖 require_student_access，admin 直接通过）
+    assert client.delete(
+        f"/api/v1/students/{student_id}", headers=admin_headers
+    ).status_code == 200
+    detail = client.get(
+        f"/api/v1/students/{student_id}", headers=admin_headers
+    ).json()
+    assert detail["is_active"] is False
+
+    assert client.post(
+        f"/api/v1/students/{student_id}/enable", headers=admin_headers
+    ).status_code == 200
+    detail = client.get(
+        f"/api/v1/students/{student_id}", headers=admin_headers
+    ).json()
+    assert detail["is_active"] is True
+
+    # 重复启用也是幂等 200
+    assert client.post(
+        f"/api/v1/students/{student_id}/enable", headers=admin_headers
+    ).status_code == 200
+
+
+def test_head_teacher_admin_only_on_patch(client: TestClient) -> None:
+    admin_auth = _register_admin(client)
+    admin_headers = _auth_headers(admin_auth)
+    teacher_a = _create_user(client, admin_headers, "teacher-d")
+    teacher_b = _create_user(client, admin_headers, "teacher-e")
+    headers_a = _auth_headers(_login(client, "teacher-d"))
+
+    created = client.post(
+        "/api/v1/classes/",
+        headers=admin_headers,
+        json={
+            "name": "班主任权限测试班",
+            "grade": 7,
+            "semester": "上",
+            "head_teacher_id": teacher_a["id"],
+            "teacher_ids": [teacher_a["id"]],
+        },
+    )
+    assert created.status_code == 201, created.text
+    class_id = created.json()["id"]
+
+    # 教师不能改 head_teacher_id
+    forbidden = client.patch(
+        f"/api/v1/classes/{class_id}",
+        headers=headers_a,
+        json={"head_teacher_id": teacher_b["id"]},
+    )
+    assert forbidden.status_code == 403
+
+    # 教师也不能停用班级
+    forbidden = client.patch(
+        f"/api/v1/classes/{class_id}",
+        headers=headers_a,
+        json={"is_active": False},
+    )
+    assert forbidden.status_code == 403
+
+    # admin 改 head_teacher_id 成功
+    allowed = client.patch(
+        f"/api/v1/classes/{class_id}",
+        headers=admin_headers,
+        json={"head_teacher_id": teacher_b["id"]},
+    )
+    assert allowed.status_code == 200
+    assert allowed.json()["head_teacher_id"] == teacher_b["id"]
+
+
+def test_excel_import_returns_structured_errors(client: TestClient) -> None:
+    import io
+
+    from openpyxl import Workbook
+
+    admin_auth = _register_admin(client)
+    admin_headers = _auth_headers(admin_auth)
+
+    # 故意构造一份包含重复学号与非法年级的 xlsx
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "学生信息"
+    ws.append(["学号", "姓名", "性别", "年级", "联系电话", "家长电话", "备注"])
+    ws.append(["E001", "正常学生", "男", 7, "", "", ""])
+    ws.append(["E001", "重复学号", "男", 7, "", "", ""])
+    ws.append(["E002", "非法年级", "男", 13, "", "", ""])
+    ws.append(["E003", "另一正常学生", "女", 8, "", "", ""])
+    buffer = io.BytesIO()
+    wb.save(buffer)
+    buffer.seek(0)
+
+    response = client.post(
+        "/api/v1/students/import",
+        headers=admin_headers,
+        files={"file": ("students.xlsx", buffer, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["created"] >= 2
+    assert any(err["code"] == "invalid_row" for err in body["errors"])
+    # 重复学号不能算 created
+    assert body["created"] < 4
+
+
+def test_excel_import_missing_required_columns_returns_400(client: TestClient) -> None:
+    import io
+
+    from openpyxl import Workbook
+
+    admin_auth = _register_admin(client)
+    admin_headers = _auth_headers(admin_auth)
+
+    wb = Workbook()
+    ws = wb.active
+    ws.append(["姓名", "性别"])  # 缺少学号、年级
+    ws.append(["没列的学生", "男"])
+    buffer = io.BytesIO()
+    wb.save(buffer)
+    buffer.seek(0)
+
+    response = client.post(
+        "/api/v1/students/import",
+        headers=admin_headers,
+        files={"file": ("bad.xlsx", buffer, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
+    )
+    assert response.status_code == 400
+    assert "学号" in response.json()["detail"]

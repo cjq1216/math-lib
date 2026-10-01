@@ -23,15 +23,16 @@ export default function ClassesPage() {
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState("");
   const [form, setForm] = React.useState({ name: "", grade: 7, semester: "上" });
+  const [filter, setFilter] = React.useState<"active" | "all">("active");
 
   const load = React.useCallback(() => {
     setLoading(true);
     http
-      .get<ClassItem[]>("/api/v1/classes/")
+      .get<ClassItem[]>(`/api/v1/classes/?is_active=${filter === "active"}`)
       .then((d) => setItems(Array.isArray(d) ? d : []))
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
-  }, []);
+  }, [filter]);
 
   React.useEffect(load, [load]);
 
@@ -53,10 +54,15 @@ export default function ClassesPage() {
 
   return (
     <div className="space-y-4">
-      <h1 className="text-2xl font-bold">班级</h1>
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-bold">班级</h1>
+        <Link href="/classes/new">
+          <Button>+ 新建班级</Button>
+        </Link>
+      </div>
 
       <Card className="p-4">
-        <div className="grid items-end gap-3 md:grid-cols-[1fr_120px_120px_auto]">
+        <div className="grid items-end gap-3 md:grid-cols-[1fr_120px_120px_auto_auto]">
           <div>
             <Label>班级名称</Label>
             <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="七(1)班" />
@@ -79,6 +85,10 @@ export default function ClassesPage() {
             </Select>
           </div>
           <Button onClick={create}>+ 建班</Button>
+          <Select value={filter} onChange={(e) => setFilter(e.target.value as "active" | "all")}>
+            <option value="active">在用</option>
+            <option value="all">全部（含停用）</option>
+          </Select>
         </div>
       </Card>
 
@@ -94,8 +104,13 @@ export default function ClassesPage() {
             <Link key={c.id} href={`/classes/${c.id}`}>
               <Card className="p-4 transition hover:border-primary">
                 <div className="mb-1 font-medium">{c.name}</div>
-                <div className="text-xs text-muted-foreground">
+                <div className="flex flex-wrap items-center gap-1 text-xs text-muted-foreground">
                   <Badge>{c.grade} 年级</Badge> <Badge>{c.semester}册</Badge>
+                  {c.is_active ? (
+                    <Badge tone="success">在用</Badge>
+                  ) : (
+                    <Badge tone="danger">已停用</Badge>
+                  )}
                 </div>
               </Card>
             </Link>

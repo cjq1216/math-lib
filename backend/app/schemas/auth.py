@@ -30,3 +30,9 @@ class TokenPayload(StrictSchema):
     sid: int
     type: str
     jti: str | None = None
+
+
+class BootstrapStatus(StrictSchema):
+    """首启探测响应：仅指示 users 表是否为空，不返回任何用户信息。"""
+
+    has_users: bool

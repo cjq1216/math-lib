@@ -321,6 +321,57 @@ def add_student_to_class(
     return OkResponse()
 
 
+def _set_class_active(
+    class_id: int,
+    next_active: bool,
+    session: Session,
+    current_user: User,
+    request: Request,
+) -> OkResponse:
+    """由管理员切换班级启用状态；启用时无前置校验，停用时不强制保留活跃班级。"""
+    class_ = session.get(Class, class_id)
+    if class_ is None:
+        raise HTTPException(status_code=404, detail="班级不存在")
+    if class_.is_active == next_active:
+        return OkResponse()
+    class_.is_active = next_active
+    class_.updated_at = datetime.utcnow()
+    session.add(class_)
+    add_audit_event(
+        session,
+        action="enable" if next_active else "disable",
+        resource_type="class",
+        actor=current_user,
+        resource_id=class_id,
+        changes={"is_active": next_active},
+        request=request,
+    )
+    session.commit()
+    return OkResponse()
+
+
+@router.post("/{class_id}/enable", response_model=OkResponse)
+def enable_class(
+    class_id: int,
+    request: Request,
+    session: Annotated[Session, Depends(get_session)],
+    admin: Annotated[User, Depends(require_admin)],
+) -> OkResponse:
+    """启用班级；仅管理员。"""
+    return _set_class_active(class_id, True, session, admin, request)
+
+
+@router.post("/{class_id}/disable", response_model=OkResponse)
+def disable_class(
+    class_id: int,
+    request: Request,
+    session: Annotated[Session, Depends(get_session)],
+    admin: Annotated[User, Depends(require_admin)],
+) -> OkResponse:
+    """停用班级；仅管理员。"""
+    return _set_class_active(class_id, False, session, admin, request)
+
+
 @router.delete("/{class_id}/students/{student_id}", response_model=OkResponse)
 def remove_student_from_class(
     student_id: int,

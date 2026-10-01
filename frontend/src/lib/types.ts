@@ -26,6 +26,96 @@ export interface AuthResponse {
   user: CurrentUser;
 }
 
+export interface UserCreatePayload {
+  username: string;
+  password: string;
+  real_name: string;
+  email?: string | null;
+  phone?: string | null;
+  role: UserRole;
+  subject?: string | null;
+  notes?: string | null;
+}
+
+export interface UserUpdatePayload {
+  real_name?: string;
+  email?: string | null;
+  phone?: string | null;
+  role?: UserRole;
+  is_active?: boolean;
+  subject?: string | null;
+  notes?: string | null;
+  password?: string;
+}
+
+export interface ClassUpdatePayload {
+  name?: string;
+  grade?: number;
+  semester?: string;
+  head_teacher_id?: number | null;
+  notes?: string | null;
+  is_active?: boolean;
+}
+
+export interface ClassCreatePayload {
+  name: string;
+  grade: number;
+  semester: string;
+  head_teacher_id?: number | null;
+  teacher_ids?: number[];
+  notes?: string | null;
+}
+
+export interface ClassTeacher {
+  id: number;
+  username: string;
+  real_name: string;
+}
+
+export interface StudentUpdatePayload {
+  name?: string;
+  gender?: string | null;
+  grade?: number;
+  enrollment_year?: number | null;
+  phone?: string | null;
+  parent_phone?: string | null;
+  notes?: string | null;
+  is_active?: boolean;
+}
+
+export interface StudentCreatePayload {
+  student_no: string;
+  name: string;
+  gender?: string | null;
+  grade: number;
+  enrollment_year?: number | null;
+  phone?: string | null;
+  parent_phone?: string | null;
+  notes?: string | null;
+  class_id?: number | null;
+}
+
+export interface Student {
+  id: number;
+  student_no: string;
+  name: string;
+  gender?: string | null;
+  grade: number;
+  enrollment_year?: number | null;
+  phone?: string | null;
+  parent_phone?: string | null;
+  average_score?: number | null;
+  notes?: string | null;
+  is_active: boolean;
+  created_at: string;
+}
+
+export interface ImportSummary {
+  created: number;
+  updated: number;
+  errors: ImportErrorItem[];
+}
+
 export interface ImportErrorItem {
   row?: number | null;
   column?: string | null;
@@ -151,6 +241,8 @@ export interface ClassItem {
   grade: number;
   semester: string;
   head_teacher_id?: number | null;
+  notes?: string | null;
+  is_active: boolean;
 }
 
 export interface StudentItem {

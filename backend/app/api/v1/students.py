@@ -294,6 +294,33 @@ async def import_students(
     return ImportSummary(created=created, updated=updated, errors=errors)
 
 
+@router.post("/{student_id}/enable", response_model=OkResponse)
+def enable_student(
+    student_id: int,
+    request: Request,
+    student: Annotated[Student, Depends(require_student_access)],
+    session: Annotated[Session, Depends(get_session)],
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> OkResponse:
+    """软启用学生（恢复 is_active=True）。"""
+    if student.is_active:
+        return OkResponse()
+    student.is_active = True
+    student.updated_at = datetime.utcnow()
+    session.add(student)
+    add_audit_event(
+        session,
+        action="enable",
+        resource_type="student",
+        actor=current_user,
+        resource_id=student_id,
+        changes={"is_active": True},
+        request=request,
+    )
+    session.commit()
+    return OkResponse()
+
+
 @router.delete("/{student_id}", response_model=OkResponse)
 def delete_student(
     request: Request,
