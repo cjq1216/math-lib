@@ -1,5 +1,7 @@
 """学情分析 API schema。"""
 
+from datetime import datetime
+
 from pydantic import Field, model_validator
 
 from app.models.question import QuestionType
@@ -22,7 +24,8 @@ class WeakPointSummary(StrictSchema):
     kp_id: int
     accuracy: float
     severity: str
-
+    trend: str | None = None
+    recent_5_accuracy: float | None = None
 
 class StudentOverview(StrictSchema):
     student_id: int
@@ -38,7 +41,8 @@ class WeakPointRead(WeakPointSummary):
     kp_code: str | None = None
     attempts: int
     recommended_practice_count: int
-
+    is_resolved: bool = False
+    resolved_at: datetime | None = None
 
 class PracticeQuestion(StrictSchema):
     id: int
@@ -71,3 +75,15 @@ class ClassOverview(StrictSchema):
     avg_score: float | None = None
     max_score: float | None = None
     min_score: float | None = None
+
+
+class CreateTargetedHomeworkRequest(StrictSchema):
+    title: str = Field(min_length=1, max_length=255)
+    question_ids: list[int] = Field(min_length=1)
+    score_per_question: float = Field(default=5.0, gt=0)
+
+
+class CreateTargetedHomeworkResponse(StrictSchema):
+    homework_id: int
+    paper_id: int
+    title: str

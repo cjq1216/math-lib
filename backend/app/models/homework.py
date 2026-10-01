@@ -5,6 +5,7 @@ from datetime import datetime
 from enum import Enum
 from typing import Optional
 
+from sqlalchemy import UniqueConstraint
 from sqlmodel import JSON, Field, SQLModel
 
 
@@ -62,6 +63,35 @@ class Homework(SQLModel, table=True):
     updated_at: datetime = Field(default_factory=datetime.utcnow)
 
 
+class HomeworkClass(SQLModel, table=True):
+    """作业下发关联班级"""
+
+    __tablename__ = "homework_classes"
+    __table_args__ = (
+        UniqueConstraint("homework_id", "class_id", name="uq_homework_classes_homework_class"),
+    )
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    homework_id: int = Field(foreign_key="homework.id", index=True, ondelete="CASCADE")
+    class_id: int = Field(foreign_key="classes.id", index=True, ondelete="CASCADE")
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class HomeworkStudent(SQLModel, table=True):
+    """作业下发学生名单快照（隔离后续学生转班影响）"""
+
+    __tablename__ = "homework_students"
+    __table_args__ = (
+        UniqueConstraint("homework_id", "student_id", name="uq_homework_students_homework_student"),
+    )
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    homework_id: int = Field(foreign_key="homework.id", index=True, ondelete="CASCADE")
+    student_id: int = Field(foreign_key="students.id", index=True, ondelete="CASCADE")
+    class_id: Optional[int] = Field(default=None, foreign_key="classes.id", ondelete="SET NULL")
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
 class HomeworkResult(SQLModel, table=True):
     """
     学生作答结果
@@ -71,6 +101,9 @@ class HomeworkResult(SQLModel, table=True):
     """
 
     __tablename__ = "homework_results"
+    __table_args__ = (
+        UniqueConstraint("homework_id", "student_id", name="uq_homework_results_homework_student"),
+    )
 
     id: Optional[int] = Field(default=None, primary_key=True)
     homework_id: int = Field(foreign_key="homework.id", index=True, ondelete="CASCADE")
@@ -97,3 +130,30 @@ class HomeworkResult(SQLModel, table=True):
     recorded_by: Optional[int] = Field(default=None, foreign_key="users.id")
     recorded_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class HomeworkQuestionResult(SQLModel, table=True):
+    """
+    单题成绩明细
+
+    记录学生某次作业中每道试卷题目的得分、满分、对错状态与作答文本。
+    用于精确计算知识点掌握度与薄弱点。
+    """
+
+    __tablename__ = "homework_question_results"
+    __table_args__ = (
+        UniqueConstraint("homework_result_id", "paper_question_id", name="uq_hw_q_results_hw_res_paper_q"),
+    )
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    homework_result_id: int = Field(foreign_key="homework_results.id", index=True, ondelete="CASCADE")
+    paper_question_id: int = Field(foreign_key="paper_questions.id", index=True, ondelete="CASCADE")
+    question_id: int = Field(foreign_key="questions.id", index=True, ondelete="CASCADE")
+
+    score: float = Field(default=0.0)
+    max_score: float = Field(default=0.0)
+    is_correct: bool = Field(default=False)
+
+    answer_text: Optional[str] = Field(default=None)
+    time_spent_seconds: Optional[int] = Field(default=None)
+    recorded_at: datetime = Field(default_factory=datetime.utcnow)

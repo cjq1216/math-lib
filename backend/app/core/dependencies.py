@@ -14,7 +14,7 @@ from app.core.database import get_session
 from app.core.security import decode_token
 from app.models.auth_session import AuthSession
 from app.models.class_ import Class, ClassStudent, ClassTeacher
-from app.models.homework import Homework
+from app.models.homework import Homework, HomeworkClass, HomeworkStudent
 from app.models.student import Student
 from app.models.user import User, UserRole
 
@@ -163,9 +163,24 @@ def require_student_access(
 
 
 def can_access_homework(session: Session, current_user: User, homework: Homework) -> bool:
-    """判断当前用户能否访问仍使用 JSON 关联的作业。"""
+    """判断当前用户能否访问作业（支持名单快照与创建者/管理员权限）。"""
     if current_user.role == UserRole.ADMIN or homework.created_by == current_user.id:
         return True
+
+    # 优先查快照表
+    hw_classes = session.exec(
+        select(HomeworkClass.class_id).where(HomeworkClass.homework_id == homework.id)
+    ).all()
+    hw_students = session.exec(
+        select(HomeworkStudent.student_id).where(HomeworkStudent.homework_id == homework.id)
+    ).all()
+
+    if hw_classes or hw_students:
+        return all(
+            can_access_class(session, current_user, class_id) for class_id in hw_classes
+        ) and all(
+            can_access_student(session, current_user, student_id) for student_id in hw_students
+        )
 
     class_ids = homework.class_ids or []
     student_ids = homework.student_ids or []
@@ -176,7 +191,6 @@ def can_access_homework(session: Session, current_user: User, homework: Homework
     ) and all(
         can_access_student(session, current_user, student_id) for student_id in student_ids
     )
-
 
 def require_homework_access(
     homework_id: int,

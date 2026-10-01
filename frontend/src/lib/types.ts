@@ -263,6 +263,33 @@ export interface HomeworkItem {
   created_at?: string;
 }
 
+export interface HomeworkQuestionResultItem {
+  id: number;
+  paper_question_id: number;
+  question_id: number;
+  score: number;
+  max_score: number;
+  is_correct: boolean;
+  answer_text?: string | null;
+  time_spent_seconds?: number | null;
+}
+
+export interface HomeworkStudentItem {
+  student_id: number;
+  student_no?: string | null;
+  name: string;
+  class_id?: number | null;
+  class_name?: string | null;
+}
+
+export interface HomeworkPaperQuestionItem {
+  id: number;
+  question_id: number;
+  display_order: number;
+  score: number;
+  stem_snapshot?: string | null;
+}
+
 export interface HomeworkResultItem {
   id: number;
   student_id: number;
@@ -270,6 +297,21 @@ export interface HomeworkResultItem {
   max_score?: number | null;
   percentage?: number | null;
   time_spent_minutes?: number | null;
+  question_results?: HomeworkQuestionResultItem[];
+}
+
+export interface HomeworkDetail {
+  id: number;
+  title: string;
+  type: string;
+  status: string;
+  paper_id: number;
+  class_ids?: number[] | null;
+  student_ids?: number[] | null;
+  due_at?: string | null;
+  results: HomeworkResultItem[];
+  target_students: HomeworkStudentItem[];
+  paper_questions: HomeworkPaperQuestionItem[];
 }
 
 export interface WeakPoint {
@@ -280,6 +322,10 @@ export interface WeakPoint {
   severity: string;
   attempts: number;
   recommended_practice_count?: number | null;
+  trend?: string | null;
+  recent_5_accuracy?: number | null;
+  is_resolved?: boolean;
+  resolved_at?: string | null;
 }
 
 export interface StudentOverview {
@@ -288,7 +334,13 @@ export interface StudentOverview {
   average_score?: number | null;
   total_homework?: number | null;
   knowledge_points_practiced?: number | null;
-  weak_points?: { kp_id: number; accuracy: number; severity: string }[];
+  weak_points?: {
+    kp_id: number;
+    accuracy: number;
+    severity: string;
+    trend?: string | null;
+    recent_5_accuracy?: number | null;
+  }[];
 }
 
 export interface ClassOverview {

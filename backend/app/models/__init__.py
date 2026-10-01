@@ -5,7 +5,13 @@ from app.models.audit_log import AuditLog
 from app.models.auth_session import AuthSession
 from app.models.background_task import BackgroundTask, TaskStatus, TaskType
 from app.models.class_ import Class, ClassStudent, ClassTeacher
-from app.models.homework import Homework, HomeworkResult
+from app.models.homework import (
+    Homework,
+    HomeworkClass,
+    HomeworkQuestionResult,
+    HomeworkResult,
+    HomeworkStudent,
+)
 from app.models.knowledge_point import KnowledgePoint
 from app.models.media import MediaResource, MediaUsageType, QuestionMedia
 from app.models.paper import Paper, PaperQuestion, PaperStatus
@@ -44,7 +50,10 @@ __all__ = [
     "PaperQuestion",
     "PaperStatus",
     "Homework",
+    "HomeworkClass",
+    "HomeworkStudent",
     "HomeworkResult",
+    "HomeworkQuestionResult",
     "StudentKPStats",
     "WeakPoint",
     "AuditLog",

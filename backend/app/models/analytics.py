@@ -6,6 +6,7 @@
 from datetime import datetime
 from typing import Optional
 
+from sqlalchemy import UniqueConstraint
 from sqlmodel import Field, SQLModel
 
 
@@ -18,6 +19,9 @@ class StudentKPStats(SQLModel, table=True):
     """
 
     __tablename__ = "student_kp_stats"
+    __table_args__ = (
+        UniqueConstraint("student_id", "knowledge_point_id", name="uq_student_kp_stats_student_kp"),
+    )
 
     id: Optional[int] = Field(default=None, primary_key=True)
     student_id: int = Field(foreign_key="students.id", index=True, ondelete="CASCADE")
@@ -48,6 +52,9 @@ class WeakPoint(SQLModel, table=True):
     """
 
     __tablename__ = "weak_points"
+    __table_args__ = (
+        UniqueConstraint("student_id", "knowledge_point_id", name="uq_weak_points_student_kp"),
+    )
 
     id: Optional[int] = Field(default=None, primary_key=True)
     student_id: int = Field(foreign_key="students.id", index=True, ondelete="CASCADE")
