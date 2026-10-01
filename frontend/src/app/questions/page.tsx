@@ -72,9 +72,14 @@ export default function QuestionsPage() {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">题库</h1>
-        <Link href="/questions/new">
-          <Button>+ 录题</Button>
-        </Link>
+        <div className="flex items-center gap-2">
+          <Link href="/questions/import">
+            <Button variant="outline">+ 试卷切题导入</Button>
+          </Link>
+          <Link href="/questions/new">
+            <Button>+ 手动录题</Button>
+          </Link>
+        </div>
       </div>
 
       <Card className="p-4">

@@ -75,18 +75,18 @@ def finish_task(
     session: Session,
     task_id: int,
     result: dict[str, Any] | None = None,
+    partial: bool = False,
 ) -> None:
-    """标记任务成功完成"""
+    """标记任务成功完成（可指定是否为部分成功）"""
     task = session.get(BackgroundTask, task_id)
     if not task:
         return
-    task.status = TaskStatus.SUCCESS
+    task.status = TaskStatus.PARTIAL_SUCCESS if partial else TaskStatus.SUCCESS
     task.progress = 100
     task.result = result or {}
     task.finished_at = datetime.utcnow()
     session.add(task)
     session.commit()
-
 
 def fail_task(
     session: Session,
@@ -113,6 +113,39 @@ def fail_task(
     )
     session.commit()
 
+
+def cancel_task(
+    session: Session,
+    task_id: int,
+) -> None:
+    """标记任务取消"""
+    task = session.get(BackgroundTask, task_id)
+    if not task or task.status in (TaskStatus.SUCCESS, TaskStatus.PARTIAL_SUCCESS, TaskStatus.FAILED):
+        return
+    task.status = TaskStatus.CANCELLED
+    task.finished_at = datetime.utcnow()
+    session.add(task)
+    session.commit()
+
+
+def recover_orphaned_tasks(session: Session) -> int:
+    """服务启动时扫描并自愈孤儿 running 状态的任务，标记为 failed。"""
+    from sqlmodel import select
+
+    stale_tasks = session.exec(
+        select(BackgroundTask).where(
+            BackgroundTask.status.in_([TaskStatus.RUNNING, TaskStatus.PENDING])
+        )
+    ).all()
+    count = len(stale_tasks)
+    for t in stale_tasks:
+        t.status = TaskStatus.FAILED
+        t.error_message = "服务重启导致任务中断，请重新提交。"
+        t.finished_at = datetime.utcnow()
+        session.add(t)
+    if count > 0:
+        session.commit()
+    return count
 
 async def run_async_task(
     task_id: int,
@@ -192,8 +225,8 @@ def schedule_task(
     # 调度后台执行
     background_tasks.add_task(
         run_async_task,
-        task_id=task.id,
-        func=func,
+        task.id,
+        func,
         **func_kwargs,
     )
 

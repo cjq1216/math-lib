@@ -1,4 +1,4 @@
-"""LLM 与后台任务 API schema。"""
+"""LLM、后台切题打标任务与向量检索 API schema。"""
 
 from datetime import datetime
 from typing import Any
@@ -53,3 +53,43 @@ class TaskSummary(StrictSchema):
     progress: int
     created_at: datetime
     finished_at: datetime | None = None
+
+
+class DocumentExtractResponse(StrictSchema):
+    filename: str
+    file_type: str
+    total_chars: int
+    page_count: int | None = None
+    content: str
+
+
+class SplitDraftQuestion(StrictSchema):
+    number: str | None = None
+    stem: str = Field(min_length=1)
+    question_type: str = "choice_single"
+    difficulty: int = Field(default=3, ge=1, le=5)
+    total_score: float = Field(default=5.0, ge=0)
+    options: list[str] | None = None
+    sub_questions: list[dict[str, Any]] | None = None
+    answer: str | None = None
+    analysis: str | None = None
+    knowledge_points: list[str] = Field(default_factory=list)
+
+
+class BatchCurateCommitRequest(StrictSchema):
+    questions: list[SplitDraftQuestion] = Field(min_length=1)
+    source_id: int | None = None
+
+
+class BatchCurateCommitResponse(StrictSchema):
+    created_count: int
+    question_ids: list[int]
+
+
+class SimilarQuestionItem(StrictSchema):
+    question_id: int
+    similarity: float
+    stem: str
+    question_type: str
+    difficulty: int
+    total_score: float

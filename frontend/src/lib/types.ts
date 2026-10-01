@@ -426,9 +426,38 @@ export interface RankRow {
 export interface LlmTaskStatus {
   task_id: number;
   task_type: string;
-  status: "pending" | "running" | "success" | "failed";
+  status: "pending" | "running" | "success" | "partial_success" | "failed" | "cancelled";
   progress: number;
   progress_message?: string | null;
   result?: unknown;
   error_message?: string | null;
+}
+
+export interface SplitDraftQuestion {
+  number?: string | null;
+  stem: string;
+  question_type: QuestionType;
+  difficulty: number;
+  total_score: number;
+  options?: string[] | null;
+  sub_questions?: { label?: string; stem?: string; score?: number; answer?: string; analysis?: string }[] | null;
+  answer?: string | null;
+  analysis?: string | null;
+  knowledge_points: string[];
+}
+
+export interface SplitTaskResult {
+  questions: SplitDraftQuestion[];
+  total: number;
+  partial?: boolean;
+  failed_chunks?: { chunk_index: number; error: string }[];
+}
+
+export interface SimilarQuestionItem {
+  question_id: number;
+  similarity: number;
+  stem: string;
+  question_type: QuestionType;
+  difficulty: number;
+  total_score: number;
 }

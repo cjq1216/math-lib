@@ -69,6 +69,14 @@ async def lifespan(app: FastAPI):
     init_db()
     logger.info("Database initialized")
 
+    # 启动时扫描并自愈遗留 running 状态的孤儿后台任务
+    from app.core.database import SessionLocal
+    from app.services.task_service import recover_orphaned_tasks
+
+    with SessionLocal() as db_session:
+        recovered = recover_orphaned_tasks(db_session)
+        if recovered > 0:
+            logger.warning(f"服务启动自愈：已将 {recovered} 个遗留未完成后台任务标记为中断失败")
     yield
 
     logger.info("Shutting down")

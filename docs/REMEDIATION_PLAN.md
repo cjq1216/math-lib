@@ -436,8 +436,8 @@ homework_question_results
 
 ## 8. 迭代 R5：LLM、文档导入与向量能力
 
-**优先级：P1/P2**
-
+**优先级：P1/P2**  
+**状态：已完成（2026-10-02）**
 ### 8.1 任务系统
 
 - 路由仅创建任务，实际逻辑进入 application service；

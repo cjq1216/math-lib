@@ -14,12 +14,12 @@ from sqlmodel import JSON, Field, SQLModel
 class TaskStatus(str, Enum):
     """任务状态"""
 
-    PENDING = "pending"      # 排队中
-    RUNNING = "running"      # 执行中
-    SUCCESS = "success"      # 成功
-    FAILED = "failed"        # 失败
-    CANCELLED = "cancelled"  # 取消
-
+    PENDING = "pending"                  # 排队中
+    RUNNING = "running"                  # 执行中
+    SUCCESS = "success"                  # 成功
+    PARTIAL_SUCCESS = "partial_success"  # 部分成功
+    FAILED = "failed"                    # 失败
+    CANCELLED = "cancelled"              # 取消
 
 class TaskType(str, Enum):
     """任务类型"""
