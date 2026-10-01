@@ -31,8 +31,8 @@ export default function QuestionsPage() {
   const [qtype, setQtype] = React.useState("");
   const [difficulty, setDifficulty] = React.useState("");
   const [kpId, setKpId] = React.useState("");
+  const [isVerified, setIsVerified] = React.useState("");
   const [kps, setKps] = React.useState<KnowledgePoint[]>([]);
-
   React.useEffect(() => {
     http
       .get<KnowledgePoint[]>("/api/v1/knowledge/")
@@ -45,7 +45,14 @@ export default function QuestionsPage() {
     setError("");
     http
       .get<{ items: Question[]; total: number }>(
-        `/api/v1/questions/${qs({ keyword, question_type: qtype, difficulty, knowledge_point_id: kpId, limit: 50 })}`,
+        `/api/v1/questions/${qs({
+          keyword,
+          question_type: qtype,
+          difficulty,
+          knowledge_point_id: kpId,
+          is_verified: isVerified === "" ? undefined : isVerified === "true",
+          limit: 50,
+        })}`,
       )
       .then((d) => {
         setItems(d.items ?? []);
@@ -53,7 +60,7 @@ export default function QuestionsPage() {
       })
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
-  }, [keyword, qtype, difficulty, kpId]);
+  }, [keyword, qtype, difficulty, kpId, isVerified]);
 
   // 关键词防抖
   React.useEffect(() => {
@@ -71,7 +78,7 @@ export default function QuestionsPage() {
       </div>
 
       <Card className="p-4">
-        <div className="grid gap-3 md:grid-cols-5">
+        <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6">
           <Input
             placeholder="题干关键词"
             value={keyword}
@@ -100,6 +107,11 @@ export default function QuestionsPage() {
                 {k.name}
               </option>
             ))}
+          </Select>
+          <Select value={isVerified} onChange={(e) => setIsVerified(e.target.value)}>
+            <option value="">全部校对状态</option>
+            <option value="true">已校对</option>
+            <option value="false">待校对</option>
           </Select>
           <Button variant="outline" onClick={load}>
             刷新（共 {total} 题）
