@@ -10,6 +10,8 @@ from typing import Any, Optional
 
 from sqlmodel import JSON, Field, SQLModel
 
+from app.core.datetime_utils import utc_now
+
 
 class TaskStatus(str, Enum):
     """任务状态"""
@@ -64,7 +66,7 @@ class BackgroundTask(SQLModel, table=True):
     created_by: Optional[int] = Field(default=None, foreign_key="users.id")
 
     # 时间
-    created_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+    created_at: datetime = Field(default_factory=utc_now, index=True)
     started_at: Optional[datetime] = Field(default=None)
     finished_at: Optional[datetime] = Field(default=None)
 

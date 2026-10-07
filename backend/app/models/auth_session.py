@@ -5,6 +5,8 @@ from typing import Optional
 
 from sqlmodel import Field, SQLModel
 
+from app.core.datetime_utils import utc_now
+
 
 class AuthSession(SQLModel, table=True):
     """一次用户登录会话。数据库仅保存 refresh token 的随机标识。"""
@@ -19,4 +21,4 @@ class AuthSession(SQLModel, table=True):
     last_used_at: Optional[datetime] = Field(default=None)
     ip_address: Optional[str] = Field(default=None, max_length=64)
     user_agent: Optional[str] = Field(default=None, max_length=512)
-    created_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+    created_at: datetime = Field(default_factory=utc_now, index=True)

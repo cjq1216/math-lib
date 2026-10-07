@@ -1,7 +1,6 @@
 """统一认证、角色和对象访问依赖。"""
 
 from dataclasses import dataclass
-from datetime import datetime
 from typing import Annotated, Any
 
 from fastapi import Depends, HTTPException, status
@@ -11,6 +10,7 @@ from sqlmodel import Session, select
 
 from app.core.config import settings
 from app.core.database import get_session
+from app.core.datetime_utils import utc_now
 from app.core.security import decode_token
 from app.models.auth_session import AuthSession
 from app.models.class_ import Class, ClassStudent, ClassTeacher
@@ -58,7 +58,7 @@ def get_auth_context(
         auth_session is None
         or auth_session.user_id != user_id
         or auth_session.revoked_at is not None
-        or auth_session.expires_at <= datetime.utcnow()
+        or auth_session.expires_at <= utc_now()
     ):
         raise _unauthorized()
 

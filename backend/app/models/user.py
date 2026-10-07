@@ -7,6 +7,8 @@ from typing import Optional
 
 from sqlmodel import Field, SQLModel
 
+from app.core.datetime_utils import utc_now
+
 
 class UserRole(str, Enum):
     """用户角色"""
@@ -36,6 +38,6 @@ class User(SQLModel, table=True):
     notes: Optional[str] = Field(default=None, description="备注")
 
     # 审计
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=utc_now)
+    updated_at: datetime = Field(default_factory=utc_now)
     last_login_at: Optional[datetime] = Field(default=None)

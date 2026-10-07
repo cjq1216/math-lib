@@ -2,7 +2,6 @@
 
 import io
 import re
-from datetime import datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile, status
@@ -11,6 +10,7 @@ from openpyxl import Workbook, load_workbook
 from sqlmodel import Session, select
 
 from app.core.database import get_session
+from app.core.datetime_utils import utc_now
 from app.core.dependencies import (
     can_access_class,
     can_access_homework,
@@ -165,7 +165,7 @@ def create_homework(
         paper_id=payload.paper_id,
         class_ids=class_ids,
         student_ids=student_ids,
-        assigned_at=datetime.utcnow(),
+        assigned_at=utc_now(),
         due_at=payload.due_at,
         time_limit_minutes=payload.time_limit_minutes,
         allow_retake=payload.allow_retake,
@@ -450,7 +450,7 @@ def record_result(
             existing_qr.is_correct = is_correct
             existing_qr.answer_text = qr.answer_text
             existing_qr.time_spent_seconds = qr.time_spent_seconds
-            existing_qr.recorded_at = datetime.utcnow()
+            existing_qr.recorded_at = utc_now()
             session.add(existing_qr)
             saved_q_results.append(existing_qr)
 
@@ -488,7 +488,7 @@ def record_result(
     result.teacher_comment = payload.teacher_comment
     result.input_source = "manual"
     result.recorded_by = current_user.id
-    result.updated_at = datetime.utcnow()
+    result.updated_at = utc_now()
     session.add(result)
     session.flush()
 
@@ -728,7 +728,7 @@ async def import_results(
         result.percentage = (total_score / max_score * 100) if max_score > 0 else 0.0
         result.input_source = "excel"
         result.recorded_by = current_user.id
-        result.updated_at = datetime.utcnow()
+        result.updated_at = utc_now()
 
         detail_json = []
         # 保存 HomeworkQuestionResult
@@ -748,7 +748,7 @@ async def import_results(
             existing_qr.score = score
             existing_qr.max_score = pq.score
             existing_qr.is_correct = is_correct
-            existing_qr.recorded_at = datetime.utcnow()
+            existing_qr.recorded_at = utc_now()
             session.add(existing_qr)
             detail_json.append(
                 {

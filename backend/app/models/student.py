@@ -6,6 +6,8 @@ from typing import Optional
 
 from sqlmodel import Field, SQLModel
 
+from app.core.datetime_utils import utc_now
+
 
 class Student(SQLModel, table=True):
     """学生信息表"""
@@ -31,6 +33,6 @@ class Student(SQLModel, table=True):
     is_active: bool = Field(default=True, description="是否在校")
 
     created_by: Optional[int] = Field(default=None, foreign_key="users.id")
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=utc_now)
+    updated_at: datetime = Field(default_factory=utc_now)
     graduated_at: Optional[date] = Field(default=None, description="毕业日期")

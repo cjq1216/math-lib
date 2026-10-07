@@ -72,6 +72,11 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
     log_file: str = "./data/logs/app.log"
 
+    # ===== 备份与运维 =====
+    backup_dir: str = "./data/backups"
+    backup_retention_days: int = 30
+    backup_max_count: int = 20
+
     # ===== CORS =====
     cors_origins: list[str] = Field(default=["http://localhost:3000", "http://127.0.0.1:3000"])
 

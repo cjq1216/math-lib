@@ -12,6 +12,8 @@ from typing import Optional
 
 from sqlmodel import JSON, Field, SQLModel
 
+from app.core.datetime_utils import utc_now
+
 
 class MediaUsageType(str, Enum):
     """媒体用途"""
@@ -55,7 +57,7 @@ class MediaResource(SQLModel, table=True):
     reference_count: int = Field(default=0, description="被多少题目引用")
 
     created_by: Optional[int] = Field(default=None, foreign_key="users.id")
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=utc_now)
 
 
 class QuestionMedia(SQLModel, table=True):
@@ -73,4 +75,4 @@ class QuestionMedia(SQLModel, table=True):
     alt_text: Optional[str] = Field(default=None, max_length=255)
     caption: Optional[str] = Field(default=None, max_length=64, description="图1/图2")
 
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=utc_now)

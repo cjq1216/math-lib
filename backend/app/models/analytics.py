@@ -9,6 +9,8 @@ from typing import Optional
 from sqlalchemy import UniqueConstraint
 from sqlmodel import Field, SQLModel
 
+from app.core.datetime_utils import utc_now
+
 
 class StudentKPStats(SQLModel, table=True):
     """
@@ -41,7 +43,7 @@ class StudentKPStats(SQLModel, table=True):
 
     # 时间
     last_practiced_at: Optional[datetime] = Field(default=None)
-    last_updated_at: datetime = Field(default_factory=datetime.utcnow)
+    last_updated_at: datetime = Field(default_factory=utc_now)
 
 
 class WeakPoint(SQLModel, table=True):
@@ -72,5 +74,5 @@ class WeakPoint(SQLModel, table=True):
     is_resolved: bool = Field(default=False, description="是否已攻克")
     resolved_at: Optional[datetime] = Field(default=None)
 
-    detected_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    detected_at: datetime = Field(default_factory=utc_now)
+    updated_at: datetime = Field(default_factory=utc_now)

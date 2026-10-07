@@ -1,6 +1,5 @@
 """试卷 CRUD、智能组卷、题目微调与真实文件导出路由。"""
 
-from datetime import datetime
 from typing import Annotated
 from urllib.parse import quote
 
@@ -8,6 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response,
 from sqlmodel import Session, select
 
 from app.core.database import get_session
+from app.core.datetime_utils import utc_now
 from app.core.dependencies import get_current_user
 from app.models.paper import Paper, PaperQuestion, PaperStatus
 from app.models.question import Question
@@ -158,7 +158,7 @@ def generate_paper(
         )
     except ConstraintUnsatisfiableError as e:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=422,
             detail=e.to_dict(),
         ) from None
 
@@ -202,8 +202,8 @@ def publish_paper(
     if paper is None:
         raise HTTPException(status_code=404, detail="试卷不存在")
     paper.status = PaperStatus.PUBLISHED
-    paper.published_at = datetime.utcnow()
-    paper.updated_at = datetime.utcnow()
+    paper.published_at = utc_now()
+    paper.updated_at = utc_now()
     session.add(paper)
     add_audit_event(
         session,
@@ -302,7 +302,7 @@ def reorder_paper_questions(
             pq.display_order = item.display_order
             session.add(pq)
 
-    paper.updated_at = datetime.utcnow()
+    paper.updated_at = utc_now()
     session.add(paper)
 
     add_audit_event(
@@ -345,7 +345,7 @@ def update_paper_question(
     # 重新计算试卷总分
     all_pqs = session.exec(select(PaperQuestion).where(PaperQuestion.paper_id == paper_id)).all()
     paper.total_score = round(sum(q.score for q in all_pqs), 1)
-    paper.updated_at = datetime.utcnow()
+    paper.updated_at = utc_now()
     session.add(paper)
 
     add_audit_event(
@@ -394,7 +394,7 @@ def remove_paper_question(
 
     paper.question_count = len(remaining_pqs)
     paper.total_score = round(sum(q.score for q in remaining_pqs), 1)
-    paper.updated_at = datetime.utcnow()
+    paper.updated_at = utc_now()
     session.add(paper)
 
     add_audit_event(
@@ -473,7 +473,7 @@ def replace_paper_question(
     pq.options_snapshot = target_q.options
     session.add(pq)
 
-    paper.updated_at = datetime.utcnow()
+    paper.updated_at = utc_now()
     session.add(paper)
 
     add_audit_event(
@@ -544,7 +544,7 @@ def add_paper_question(
     all_pqs = session.exec(select(PaperQuestion).where(PaperQuestion.paper_id == paper_id)).all()
     paper.question_count = len(all_pqs)
     paper.total_score = round(sum(item.score for item in all_pqs), 1)
-    paper.updated_at = datetime.utcnow()
+    paper.updated_at = utc_now()
     session.add(paper)
 
     add_audit_event(

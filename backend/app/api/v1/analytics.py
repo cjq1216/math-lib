@@ -1,12 +1,12 @@
 """学生和班级学情分析路由。"""
 
-from datetime import datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlmodel import Session, select
 
 from app.core.database import get_session
+from app.core.datetime_utils import utc_now
 from app.core.dependencies import get_current_user, require_class_access, require_student_access
 from app.models.class_ import Class
 from app.models.homework import Homework, HomeworkStatus, HomeworkStudent, HomeworkType
@@ -156,7 +156,7 @@ def create_targeted_homework(
         paper_id=paper.id,
         class_ids=[],
         student_ids=[student.id],
-        assigned_at=datetime.utcnow(),
+        assigned_at=utc_now(),
         created_by=current_user.id,
     )
     session.add(homework)

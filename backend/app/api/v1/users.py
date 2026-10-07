@@ -1,12 +1,12 @@
 """管理员用户管理路由。"""
 
-from datetime import datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlmodel import Session, func, select
 
 from app.core.database import get_session
+from app.core.datetime_utils import utc_now
 from app.core.dependencies import require_admin
 from app.core.security import hash_password
 from app.models.auth_session import AuthSession
@@ -40,7 +40,7 @@ def _ensure_admin_survives(session: Session, target: User, next_role: UserRole, 
 
 
 def _revoke_user_sessions(session: Session, user_id: int) -> None:
-    now = datetime.utcnow()
+    now = utc_now()
     sessions = session.exec(
         select(AuthSession).where(
             AuthSession.user_id == user_id,
@@ -133,7 +133,7 @@ def update_user(
             user.password_hash = hash_password(value)
         else:
             setattr(user, field, value)
-    user.updated_at = datetime.utcnow()
+    user.updated_at = utc_now()
     session.add(user)
 
     if password_changed or not user.is_active:
@@ -170,7 +170,7 @@ def _disable_user(session: Session, admin: User, user_id: int, request: Request)
     _ensure_admin_survives(session, user, user.role, False)
 
     user.is_active = False
-    user.updated_at = datetime.utcnow()
+    user.updated_at = utc_now()
     session.add(user)
     _revoke_user_sessions(session, user.id)
     add_audit_event(

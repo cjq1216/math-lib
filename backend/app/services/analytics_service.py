@@ -2,10 +2,10 @@
 
 import random
 from collections import defaultdict
-from datetime import datetime
 
 from sqlmodel import Session, select
 
+from app.core.datetime_utils import utc_now
 from app.models.analytics import StudentKPStats, WeakPoint
 from app.models.class_ import ClassStudent
 from app.models.homework import HomeworkQuestionResult, HomeworkResult
@@ -55,7 +55,7 @@ def recompute_student_stats(session: Session, student_id: int) -> None:
 
             for qr in q_results:
                 kps = q_to_kps.get(qr.question_id, [])
-                rec_at = qr.recorded_at or hr_date_map.get(qr.homework_result_id, datetime.utcnow())
+                rec_at = qr.recorded_at or hr_date_map.get(qr.homework_result_id, utc_now())
                 # 若题目绑定多个知识点，分摊分值
                 weight = 1.0 / len(kps) if kps else 1.0
                 for kp_id in kps:
@@ -143,7 +143,7 @@ def recompute_student_stats(session: Session, student_id: int) -> None:
         stats.recent_5_accuracy = recent_5_acc
         stats.trend = trend
         stats.last_practiced_at = last_practiced
-        stats.last_updated_at = datetime.utcnow()
+        stats.last_updated_at = utc_now()
         session.add(stats)
 
     # 4. 自动标记薄弱点与自动解除（闭环）
@@ -194,10 +194,10 @@ def _update_weak_points_lifecycle(
         if is_remedied:
             if existing_wp and not existing_wp.is_resolved:
                 existing_wp.is_resolved = True
-                existing_wp.resolved_at = datetime.utcnow()
+                existing_wp.resolved_at = utc_now()
                 existing_wp.accuracy = accuracy
                 existing_wp.attempts = total
-                existing_wp.updated_at = datetime.utcnow()
+                existing_wp.updated_at = utc_now()
                 session.add(existing_wp)
         elif accuracy < 0.6:
             # 触发或保持薄弱点标记
@@ -211,7 +211,7 @@ def _update_weak_points_lifecycle(
                 existing_wp.recommended_practice_count = rec_count
                 existing_wp.is_resolved = False
                 existing_wp.resolved_at = None
-                existing_wp.updated_at = datetime.utcnow()
+                existing_wp.updated_at = utc_now()
                 session.add(existing_wp)
             else:
                 wp = WeakPoint(
@@ -239,7 +239,7 @@ def _update_student_aggregate(session: Session, student_id: int) -> None:
     if results:
         student.total_homework_count = len(results)
         scores = [r.total_score for r in results if r.total_score is not None]
-        student.average_score = (sum(scores) / len(scores)) if scores else None
+        student.average_score = round(sum(scores) / len(scores), 1) if scores else None
     else:
         student.total_homework_count = 0
         student.average_score = None
@@ -541,7 +541,7 @@ def get_class_overview(session: Session, class_id: int) -> dict:
         "class_id": class_id,
         "student_count": student_count,
         "total_homework": len(results),
-        "avg_score": (sum(percentages) / len(percentages)) if percentages else None,
-        "max_score": max(percentages) if percentages else None,
-        "min_score": min(percentages) if percentages else None,
+        "avg_score": round(sum(percentages) / len(percentages), 1) if percentages else None,
+        "max_score": round(max(percentages), 1) if percentages else None,
+        "min_score": round(min(percentages), 1) if percentages else None,
     }

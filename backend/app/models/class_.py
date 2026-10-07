@@ -7,6 +7,8 @@ from typing import Optional
 from sqlalchemy import UniqueConstraint
 from sqlmodel import Field, SQLModel
 
+from app.core.datetime_utils import utc_now
+
 
 class Class(SQLModel, table=True):
     """班级表"""
@@ -28,8 +30,8 @@ class Class(SQLModel, table=True):
     is_active: bool = Field(default=True)
 
     created_by: Optional[int] = Field(default=None, foreign_key="users.id")
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=utc_now)
+    updated_at: datetime = Field(default_factory=utc_now)
 
 
 class ClassTeacher(SQLModel, table=True):
@@ -44,7 +46,7 @@ class ClassTeacher(SQLModel, table=True):
     class_id: int = Field(foreign_key="classes.id", index=True, ondelete="CASCADE")
     teacher_id: int = Field(foreign_key="users.id", index=True, ondelete="CASCADE")
     assigned_by: Optional[int] = Field(default=None, foreign_key="users.id")
-    assigned_at: datetime = Field(default_factory=datetime.utcnow)
+    assigned_at: datetime = Field(default_factory=utc_now)
 
 
 class ClassStudent(SQLModel, table=True):
@@ -55,6 +57,6 @@ class ClassStudent(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     class_id: int = Field(foreign_key="classes.id", index=True)
     student_id: int = Field(foreign_key="students.id", index=True)
-    joined_at: datetime = Field(default_factory=datetime.utcnow)
+    joined_at: datetime = Field(default_factory=utc_now)
     left_at: Optional[datetime] = Field(default=None)
     notes: Optional[str] = Field(default=None)

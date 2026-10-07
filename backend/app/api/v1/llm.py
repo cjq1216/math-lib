@@ -64,6 +64,48 @@ def _require_task_owner(task: BackgroundTask, current_user: User) -> None:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="无权访问该任务")
 
 
+def _match_knowledge_point(session: Session, name_or_code: str) -> KnowledgePoint | None:
+    """多策略智能匹配知识点：精确名称 -> 编码 -> 大小写首尾空白容错 -> 包含子串匹配。"""
+    clean = name_or_code.strip()
+    if not clean:
+        return None
+
+    exact = session.exec(
+        select(KnowledgePoint).where(
+            KnowledgePoint.name == clean,
+            KnowledgePoint.is_active.is_(True),
+        )
+    ).first()
+    if exact:
+        return exact
+
+    by_code = session.exec(
+        select(KnowledgePoint).where(
+            KnowledgePoint.code == clean,
+            KnowledgePoint.is_active.is_(True),
+        )
+    ).first()
+    if by_code:
+        return by_code
+
+    lower_clean = clean.lower()
+    all_kps = session.exec(
+        select(KnowledgePoint).where(KnowledgePoint.is_active.is_(True))
+    ).all()
+    for kp in all_kps:
+        if kp.name.strip().lower() == lower_clean:
+            return kp
+
+    cand_matches = [
+        kp for kp in all_kps
+        if (clean in kp.name or kp.name in clean) and len(kp.name) >= 2
+    ]
+    if cand_matches:
+        cand_matches.sort(key=lambda k: abs(len(k.name) - len(clean)))
+        return cand_matches[0]
+
+    return None
+
 @router.post("/split-doc", response_model=TaskCreateResponse)
 async def split_exam_document(
     background_tasks: BackgroundTasks,
@@ -341,12 +383,7 @@ async def commit_split_drafts(
                 clean_name = kp_name.strip()
                 if not clean_name:
                     continue
-                kp_obj = session.exec(
-                    select(KnowledgePoint).where(
-                        KnowledgePoint.name == clean_name,
-                        KnowledgePoint.is_active == True,
-                    )
-                ).first()
+                kp_obj = _match_knowledge_point(session, clean_name)
                 if kp_obj:
                     # 避免重复
                     exists = session.exec(

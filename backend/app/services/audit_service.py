@@ -5,28 +5,11 @@ from typing import Any
 from fastapi import Request
 from sqlmodel import Session
 
+from app.core.logging_sanitizer import sanitize_sensitive_data
 from app.models.audit_log import AuditLog
 from app.models.user import User
 
-SENSITIVE_KEYS = {
-    "authorization",
-    "password",
-    "password_hash",
-    "access_token",
-    "refresh_token",
-    "token",
-}
-
-
-def _sanitize(value: Any) -> Any:
-    if isinstance(value, dict):
-        return {
-            key: "[REDACTED]" if key.lower() in SENSITIVE_KEYS else _sanitize(item)
-            for key, item in value.items()
-        }
-    if isinstance(value, list):
-        return [_sanitize(item) for item in value]
-    return value
+_sanitize = sanitize_sensitive_data
 
 
 def add_audit_event(

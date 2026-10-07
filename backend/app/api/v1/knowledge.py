@@ -10,13 +10,13 @@
 7. 结构化 JSON 导出（/export）与双向导入（/import，支持 parent_code 自动父子关联）。
 """
 
-from datetime import datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlmodel import Session, select
 
 from app.core.database import get_session
+from app.core.datetime_utils import utc_now
 from app.core.dependencies import get_current_user
 from app.models.knowledge_point import KnowledgePoint
 from app.models.question import Question, QuestionKnowledge
@@ -261,7 +261,7 @@ def update_knowledge_point(
     for field, value in updates.items():
         setattr(knowledge_point, field, value)
 
-    knowledge_point.updated_at = datetime.utcnow()
+    knowledge_point.updated_at = utc_now()
     session.add(knowledge_point)
 
     add_audit_event(
@@ -348,7 +348,7 @@ def delete_knowledge_point(
 
     # 3. 执行软删
     knowledge_point.is_active = False
-    knowledge_point.updated_at = datetime.utcnow()
+    knowledge_point.updated_at = utc_now()
     session.add(knowledge_point)
 
     add_audit_event(
@@ -389,7 +389,7 @@ def restore_knowledge_point(
             )
 
     knowledge_point.is_active = True
-    knowledge_point.updated_at = datetime.utcnow()
+    knowledge_point.updated_at = utc_now()
     session.add(knowledge_point)
 
     add_audit_event(
@@ -428,7 +428,7 @@ def import_knowledge_points(
             for k, v in data.items():
                 setattr(existing, k, v)
             existing.is_active = True
-            existing.updated_at = datetime.utcnow()
+            existing.updated_at = utc_now()
             session.add(existing)
             kp_obj = existing
         else:

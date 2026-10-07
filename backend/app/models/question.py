@@ -8,6 +8,8 @@ from typing import Optional
 
 from sqlmodel import JSON, Field, SQLModel
 
+from app.core.datetime_utils import utc_now
+
 
 class QuestionType(str, Enum):
     """题目类型"""
@@ -62,8 +64,8 @@ class Question(SQLModel, table=True):
     is_verified: bool = Field(default=False, description="是否经过人工校对")
 
     created_by: Optional[int] = Field(default=None, foreign_key="users.id")
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=utc_now)
+    updated_at: datetime = Field(default_factory=utc_now)
 
 
 class SubQuestion(SQLModel, table=True):
@@ -126,4 +128,4 @@ class QuestionKnowledge(SQLModel, table=True):
     is_primary: bool = Field(default=False, description="是否主知识点")
     weight: float = Field(default=1.0, description="权重 0.0-1.0")
 
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=utc_now)

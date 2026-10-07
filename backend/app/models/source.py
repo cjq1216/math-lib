@@ -7,6 +7,8 @@ from typing import Optional
 
 from sqlmodel import Field, SQLModel
 
+from app.core.datetime_utils import utc_now
+
 
 class SourceType(str, Enum):
     """来源类型"""
@@ -50,4 +52,4 @@ class Source(SQLModel, table=True):
 
     notes: Optional[str] = Field(default=None)
     created_by: Optional[int] = Field(default=None, foreign_key="users.id")
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=utc_now)

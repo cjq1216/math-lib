@@ -2,7 +2,7 @@
 
 FastAPI 后端，负责认证、题库、知识点、媒体、组卷、班级学生、作业成绩、学情分析和 LLM 任务。
 
-> 当前状态：R1 认证、授权与 API 契约已完成，下一阶段为 R2 成绩明细与学情闭环。默认使用 `backend/.venv` 和 Uvicorn 本地运行；Docker 配置仅作为未来部署能力，不阻塞开发。
+> 当前状态：**R0 至 R6 全量迭代修复已全部完成**，77 项自动化测试全部通过，具备完整认证授权、试卷切题、智能组卷、成绩录入、学情闭环、向量检索、安全热备份与灾难恢复能力。
 
 ## 技术栈
 
@@ -49,16 +49,16 @@ backend/
 |---|---|---|
 | 认证 | `/api/v1/auth` | 首个管理员初始化、登录、refresh 轮换、logout、当前用户 |
 | 用户 | `/api/v1/users` | 管理员专用的用户创建、更新和禁用 |
-| 题目 | `/api/v1/questions` | CRUD、筛选、知识点、小问 |
-| 知识点 | `/api/v1/knowledge` | 平铺列表、树、创建和导入 |
-| 媒体 | `/api/v1/media` | 上传、列表、删除；题目关联待完成 |
-| 试卷 | `/api/v1/papers` | CRUD、组卷；导出仍为占位 |
-| 班级 | `/api/v1/classes` | 班级和学生关联 |
-| 学生 | `/api/v1/students` | 基础管理和 Excel 导入 |
-| 作业 | `/api/v1/homework` | 下发、成绩录入和模板 |
-| 学情 | `/api/v1/analytics` | 学生、班级和针对性练习 |
-| LLM | `/api/v1/llm` | 切题、打标、Embedding 任务 |
-
+| 题目 | `/api/v1/questions` | CRUD、筛选、知识点、小问、聚合写入校验 |
+| 知识点 | `/api/v1/knowledge` | 树状与平铺列表、年级继承、循环校验 |
+| 媒体 | `/api/v1/media` | MD5 去重上传、列表、删除与多对多题目关联 |
+| 试卷 | `/api/v1/papers` | CRUD、组卷引擎、微调、Markdown/Word 快照导出 |
+| 班级 | `/api/v1/classes` | 班级维护、教师关联与学生名单管理 |
+| 学生 | `/api/v1/students` | 基础管理和 Excel 批量导入 |
+| 作业 | `/api/v1/homework` | 下发名单快照、双版本 Excel 导入与每题成绩明细 |
+| 学情 | `/api/v1/analytics` | 掌握度趋势、薄弱点 Top 5、针对性练习生成 |
+| LLM | `/api/v1/llm` | Word/PDF 文档提取、切题打标、纯线上向量检索 |
+| 系统运维 | `/api/v1/system` | SQLite 安全热备份、清单自检、保留策略清理、灾难恢复 |
 ## 环境配置
 
 配置类位于 `app/core/config.py`，通过环境变量或 `.env` 注入。
@@ -240,9 +240,7 @@ ruff check --select E9,F,I,W app tests alembic
 pytest
 alembic upgrade head
 ```
-
-以上命令已在本地通过：Alembic 当前为 `0004_auth_and_class_access`，pytest 18 项通过，基础 Ruff 规则通过。全量 Ruff 仍包含原有现代化建议，mypy 尚未作为当前验收门槛。
-
+以上命令已在本地全部通过：Alembic 迁移至 head，pytest 77 项全量通过（0 失败，0 警告），基础 Ruff 检查通过（0 错误）。
 核心 smoke：
 
 ```text

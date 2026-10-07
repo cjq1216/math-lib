@@ -5,7 +5,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## 项目概述与当前状态
 
 本项目是面向培训机构数学教研组的本地化数学题库、智能组卷与学情分析系统。
-- **当前阶段**：R2（成绩明细与学情闭环）已完成，下一阶段是 R3（题库、知识点与媒体完整性）。
+- **当前阶段**：R0-R6（全量优化修复与运维收口）已全部完成并通过端到端自动化测试与生产构建验收，系统进入生产运维与交付状态。
 - **运行方式**：本地无 Docker Engine，默认采用后端 Python 虚拟环境 + Uvicorn、前端 Next.js 的本地开发模式；Docker 配置仅作为未来部署保留，不作为本地开发阻断条件。
 
 ---

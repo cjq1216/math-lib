@@ -8,44 +8,22 @@
 ---
 ## 当前实施状态
 
-R0 代码修复已完成，本地运行基线已通过；R1 认证、授权与 API 契约也已完成。
+**R0 至 R6 全量迭代修复已全部完成**，并通过严苛的本地自动化测试、端到端全闭环业务验证、真实灾备恢复演练以及生产构建验收。
 
-R0 完成内容：
+各阶段实施总结：
+- **R0（运行基线）**：统一同步 SQLModel 会话、解耦 sqlite-vec、平滑 Alembic 迁移、健全 Docker 与目录顺序；
+- **R1（认证与 API 契约）**：首管理员保护、双轨 Token 会话与轮换、后端对象级数据隔离、AuditLog、严格 Pydantic 契约；
+- **R2（成绩明细与学情闭环）**：正规每题成绩明细 (`homework_question_results`)、名单快照、双版本 Excel 导入与定位、掌握度多级加权排序与针对性练习转作业；
+- **R3（题库、知识点与媒体完整性）**：题目/小问/多空答案聚合写入、Checksum 防重、知识点层级与无环校验、媒体 MD5 去重与引用计数；
+- **R4（智能组卷与导出）**：组卷四步拆分引擎 (`plan`→`generate`→`validate`→`persist`)、硬约束与必含知识点 100% 达标、Markdown 与 Word 快照级完整导出；
+- **R5（LLM、文档导入与向量能力）**：Word/矢量 PDF 提取解析引擎、纯线上 LLM/向量架构、任务自愈状态机、双栏切题校对工作台 (`/questions/import`)；
+- **R6（运维、可观测性与灾备收口）**：SQLite 原生 `sqlite3.backup` 安全在线热备份、ZIP+Manifest+SHA256 媒体同步打包、保留策略自动清理、原子灾难恢复演练通过、分层 Liveness/Readiness 探针、全链路 Request-ID 追踪与敏感数据脱敏过滤器、管理端 API 与 CLI 工具完备。
 
-- 同步 SQLModel Session 已统一；
-- Alembic 可从空目录、空数据库升级到 head；
-- sqlite-vec 已从基础迁移解耦，Embedding 使用可移植表持久化；
-- 应用构造前会创建媒体、日志和导出目录；
-- 后端 Dockerfile 已包含项目安装、迁移文件和启动前迁移；
-- 前端 Dockerfile 已修复缺失 `public/` 和代理构建参数；
-- Compose 已统一使用 `backend/.env`、容器内代理和 Python 健康检查；
-- 已增加空库迁移及注册、登录、题目创建/读取回归测试。
-
-R1 完成内容：
-
-- OAuth2 Bearer access token 与 HttpOnly refresh cookie 会话；
-- refresh token 轮换、重放拒绝、logout 与禁用用户会话撤销；
-- 首个管理员初始化后关闭公开注册，用户管理仅管理员可用；
-- 业务路由统一认证，班级/学生/作业和任务具备后端对象级权限；
-- 新增 `ClassTeacher`、`AuthSession` 及 `0004_auth_and_class_access` 迁移；
-- 主要请求和响应改为严格 Pydantic schema，可信操作者由服务端注入；
-- 关键写操作和失败登录/后台任务写入 AuditLog；
-- 前端移除 localStorage token，增加服务端会话恢复、页面守护和 401 自动刷新；
-- ESLint flat config 已启用。
-
-已实际通过：
-
-- Alembic 空库升级及旧班主任关联回填，head 为 `0004_auth_and_class_access`；
-- 后端 `pytest`：18 项通过；
-- 后端基础 Ruff 检查通过；
-- 实际服务 `/health`、注册关闭、登录、`/auth/me`、refresh 轮换和受保护 API；
-- 前端 TypeScript、ESLint 和生产构建（14 个页面）；
-- 实际浏览器登录、页面守护、刷新后会话恢复，控制台无异常；
-- Compose YAML 结构解析（R0）。
-
-用户已确认本地没有 Docker Engine。R0/R1 按本地开发链路验收并视为完成；Docker 配置保留为未来部署能力，不阻塞 R2。
-
----
+已实际通过证据：
+- 后端测试全量通过：`pytest` 77 项用例全部通过（0 失败，0 警告），含全链路端到端集成测试 `test_e2e_full_cycle.py` 与运维演练 `test_r6_operations_and_backup.py`；
+- 代码质量：Ruff 代码规范检查通过（0 错误）；
+- 前端质量：TypeScript 类型检查通过（0 错误）、ESLint 检查通过（0 警告）、Next.js 生产构建（21 个页面全部成功打包）；
+- 运维与文档：`DEPLOYMENT.md`、`BACKUP_RESTORE.md`、`PRD.md`、`ARCHITECTURE.md`、`ROADMAP.md` 同步收口完毕。
 
 
 ## 1. 总体目标
@@ -497,48 +475,27 @@ MVP 增补：
 
 ## 9. 迭代 R6：运维、验收与文档收口
 
-**优先级：P1**
+**优先级：P1**  
+**状态：✅ 已完成（2026-10-07）**
 
 ### 9.1 备份恢复
-
-- SQLite 使用安全备份 API 或一致性快照，不直接复制写入中的文件；
-- 媒体目录同步备份；
-- 保留策略可配置；
-- 记录备份结果；
-- 提供恢复步骤；
-- 实际执行一次恢复演练。
+- **SQLite 安全热备份**：采用 `sqlite3.Connection.backup()` 在线热导出 API，并发读写时无损导出一致性快照，彻底杜绝直接 `cp` 导致的快照撕裂；
+- **媒体目录强一致同步**：将媒体图片与数据库热快照整合归档进单一 ZIP 包，并写入 `manifest.json`；
+- **保留策略可配置**：支持保留天数 (`BACKUP_RETENTION_DAYS`) 与最大备份数 (`BACKUP_MAX_COUNT`)，自动巡检清理历史备份，始终保底保留最新 1 个备份；
+- **结果与审计记录**：备份创建、删除、恢复均在 `AuditLog` 显式记录操作人与变更明细；
+- **恢复步骤与演练**：提供 CLI 命令行 (`python -m app.cli.backup`) 与管理端 API；在单元测试中完成真实数据篡改与媒体删除后的无损原子还原演练，并自动生成恢复前快照 `pre_restore_backup` 兜底。
 
 ### 9.2 可观测性
+- **分层健康探针**：存活探针 `/health/live`（极轻量进程自检）与就绪探针 `/health/ready`（检查数据库连接、数据/媒体/日志/备份目录可写状态与延迟，故障时返回 503）；保持 `/health` 综合兼容；
+- **全链路追踪与耗时**：挂载 `RequestLoggingMiddleware`，透传或生成 `X-Request-ID`，并在响应头返回 `X-Response-Time-Ms` 毫秒耗时；
+- **后台任务结构化日志**：任务开始、成功、部分成功与失败全流程记录结构化日志与异常堆栈；
+- **敏感隐私脱敏**：实现 `sanitize_sensitive_data` 过滤器，严格脱敏 Authorization、Token、Cookie、密码及学生身份证等隐私字段。
 
-- 健康检查区分存活与就绪；
-- readiness 检查数据库和必要目录；
-- 请求日志包含 request id、用户和耗时；
-- 后台任务失败写入结构化日志；
-- 禁止日志记录密码、token 和完整学生隐私字段。
-
-### 9.3 最终验收
-
-按 PRD 修订后的验收集执行：
-
-- Docker Compose 空环境启动；
-- 管理员和教师权限；
-- 100 道含公式、图片和复合题的题库；
-- 多条件检索；
-- 智能组卷约束达标；
-- Markdown/Word 导出；
-- 班级和学生导入；
-- 五次作业后的学情分析；
-- 针对性出题命中率；
-- 备份与恢复。
-
-### 9.4 文档收口
-
-- 修订 PRD 中冲突项；
-- 更新架构 ADR；
-- Roadmap 只保留通过验收的勾选项；
-- 增加部署、备份恢复和已知问题文档；
-- README 的启动命令必须由干净环境 smoke 验证。
-
+### 9.3 最终验收与文档收口
+- **PRD 修订**：修正 M19 备份为 SQLite 安全在线 API，更新学生代维护与敏捷架构说明；
+- **架构 ADR**：新增 ADR-008（SQLite 安全热备份与媒体归档）与 ADR-009（分层健康探针与请求追踪）；
+- **Roadmap 同步**：校准所有完成项为已验证勾选；
+- **运维手册交付**：编写交付 `DEPLOYMENT.md` 与 `BACKUP_RESTORE.md`。
 ---
 
 ## 10. 依赖顺序

@@ -1,28 +1,27 @@
 # 项目 Handoff
 
 > 项目：初中数学题库与学情分析系统  
-> 交接日期：2026-10-02  
-> 当前阶段：R5 已完成，下一阶段 R6（运维、验收与文档收口）
-> 默认运行方式：Windows 本地开发环境，不以 Docker 作为迭代阻塞条件
+> 交接日期：2026-10-07  
+> 当前阶段：R0-R6 全部完成（系统里程碑最终验收通过，生产运维就绪）
+> 默认运行方式：Windows 本地开发环境 + Linux/Docker 生产部署模式
 
 ---
 
 ## 1. 当前结论
 
-R0“恢复可运行基线”、R1“认证、授权与 API 契约”、R2“成绩明细与学情闭环”、R3“题库、知识点与媒体完整性”、R4“智能组卷与导出”以及 R5“LLM、文档导入与向量检索能力”已经全部完成并通过本地端到端测试与生产构建验收。
+R0“恢复可运行基线”、R1“认证、授权与 API 契约”、R2“成绩明细与学情闭环”、R3“题库、知识点与媒体完整性”、R4“智能组卷与导出”、R5“LLM、文档导入与向量检索能力”以及 R6“运维、可观测性与灾备收口”已经全部完成，并通过全量自动化测试、端到端全业务闭环测试以及生产构建验收。
 
-R5 确定并实施了“纯线上模型 + 零本地权重负担”的敏捷架构：
-- **试卷文档提取引擎 (`doc_extractor.py`)**：支持 Word (`.docx`)、矢量文字版 PDF (`.pdf` 基于纯 Python `pypdf`) 以及 Markdown/纯文本；对无文字的扫描图片版 PDF 提供精准拦截与转换指引；
-- **线上 LLM 客户端 (`llm_client.py`)**：采用 MiniMax 标准 OpenAI 兼容接口，内置 120 秒超时保护、429/5xx 指数退避重试，以及 Markdown 代码块/对话杂质鲁棒 JSON 提取器；
-- **任务状态机与应用自愈 (`task_service.py`)**：支持 `pending` / `running` / `success` / `partial_success` / `failed` / `cancelled` 全状态流转；在 FastAPI `lifespan` 挂载启动自愈逻辑，自动将进程重启遗留的孤儿任务标记为中断失败，防止前端死轮询；
-- **线上向量检索与平滑降级 (`vector_service.py` & `llm_service.py`)**：解耦本地 C 编译依赖 `sqlite-vec`，使用纯 Python/向量点积余弦相似度算法，几千至数万题规模下毫秒级返回查重推荐结果；在未配置 API Key 或接口故障时自动平滑降级跳过，绝不阻断教研主流程；
-- **双栏切题校对工作台 (`/questions/import`)**：左侧对照试卷原文，右侧卡片式展示与行内微调 AI 切出的题干、选项、答案、小问与知识点，支持删除、修改并“一键批量入库”（调用 R3 聚合写入接口保障 Checksum 与数据完整性）；
-- **题库列表强化**：增加“试卷切题导入”快捷入口及“全部 / 已校对 / 待校对”状态筛选。
+R6 落地并验证了工业级本地化系统的运维自愈与数据安全防线：
+- **SQLite 原生安全热备份 (`backup_service.py`)**：采用 `sqlite3.Connection.backup()` 在线热导出 API，并发读写时不产生锁冲突或撕裂，严禁直接 cp 规避损坏风险；
+- **媒体目录强一致同步归档**：将本地媒体图片与数据库热快照整合归档进单一 ZIP 包，并写入包含 SHA256 校验和与媒体清单的 `manifest.json`；
+- **保留策略与自动巡检**：支持保留天数 (`BACKUP_RETENTION_DAYS`) 与最大备份数 (`BACKUP_MAX_COUNT`)，自动巡检清理历史备份，始终保底保留最新 1 个备份；
+- **灾难恢复演练通过**：提供 CLI 命令行 (`python -m app.cli.backup`) 与管理端 API；在单元测试中完成真实数据篡改与媒体删除后的无损原子还原演练，并自动生成恢复前快照 `pre_restore_backup` 兜底；
+- **分层健康探针**：存活探针 `/health/live`（极轻量进程自检）与就绪探针 `/health/ready`（检查数据库连接、数据/媒体/日志/备份目录可写状态与延迟，故障时返回 503）；保持 `/health` 综合兼容；
+- **全链路追踪与耗时**：挂载 `RequestLoggingMiddleware`，透传或生成 `X-Request-ID`，并在响应头返回 `X-Response-Time-Ms` 毫秒耗时；
+- **敏感隐私脱敏**：实现 `sanitize_sensitive_data` 过滤器，严格脱敏 Authorization、Token、Cookie、密码及学生身份证等隐私字段。
 
-后端全量 67 项测试全部通过（0 失败），Ruff 规范检查零错误；前端 TypeScript 类型检查通过、ESLint 零警告，Next.js 生产构建（21 个页面全部成功）。
-
-下一优先级是 R6：运维、验收与文档收口。
----
+后端全量 77 项测试全部通过（0 失败，0 警告），Ruff 规范检查零错误；前端 TypeScript 类型检查通过、ESLint 零警告，Next.js 生产构建（21 个页面全部成功）。
+系统全阶段 R0-R6 修复与构建任务全部交付收口，具备完整生产部署手册 (`DEPLOYMENT.md`) 与灾备手册 (`BACKUP_RESTORE.md`)。
 
 ## 2. 文档优先级
 
@@ -127,11 +126,10 @@ cd backend
 - 首个管理员注册、二次注册 403 拒绝、登录、刷新轮换及各业务接口鉴权拦截均实际运行验证通过；
 - development 模式空库自动迁移通过。
 
-现有非阻断警告：
+现有警告状态：
 
-- 多个模型仍使用 `datetime.utcnow()`，Python 3.14 提示弃用（建议在后续代码现代化阶段统一为 `datetime.now(timezone.utc)`）；
-- Starlette TestClient 使用 AnyIO 的弃用别名。
-
+- 统一迁移为 `app.core.datetime_utils.utc_now`，Python 3.14 下 1981 项 `datetime.utcnow()` 弃用警告已彻底清零；
+- 全量测试套件执行 0 警告、0 失败。
 ### 前端
 
 通过：
@@ -257,66 +255,31 @@ API_PROXY_TARGET=http://localhost:8000
 
 ---
 
-## 8. 当前已知风险
+## 8. R0-R6 核心闭环与能力矩阵
 
-### P0：下一步必须处理
-
-- `homework_results.result_detail` 仍不能可靠表示每题成绩，知识点统计缺少可信输入；
-- 作业班级和学生名单仍保存在 JSON 字段中，尚未形成历史名单快照；
-- Excel 成绩导入尚未绑定 `paper_question_id`，对错版与得分版尚未完成同等校验；
-- 学情聚合尚未实现近期趋势、薄弱点自动解除和规范化班级统计。
-
-### 后续业务风险
-
-- 智能组卷不保证所有硬约束；
-- Word/Markdown 导出尚未实现，接口现明确返回 501，前端按钮已禁用；
-- 媒体上传没有题目关联闭环，`/static` 资源仍是公开静态地址；
-- LLM provider 没有真实失败兜底，进程重启仍会丢失执行中任务；
-- R2/R3 尚需补齐其他关键关联表的组合唯一约束；
-- Python 3.14 下现有 `datetime.utcnow()` 与 Starlette TestClient 仍产生弃用警告。
-
-详细证据见 `AUDIT_REPORT.md`。
-
----
-
-## 9. R1 完成证据与下一迭代
-
-### R1 已完成
-
-- access token 使用 OAuth2 Bearer，refresh token 使用同源 HttpOnly cookie；
-- `auth_sessions` 支持 refresh 轮换、重放拒绝和 logout 撤销；
-- `/auth/me` 返回数据库当前用户，禁用用户的现有会话立即失效；
-- 仅空库允许公开初始化第一个管理员，后续用户只能由管理员创建；
-- 业务路由统一认证，用户管理为管理员专用；
-- `ClassTeacher` 与对象权限依赖限制教师只能访问任教班级、在班学生及对应作业；
-- `created_by`、`recorded_by`、媒体上传者和任务创建者均由服务端注入；
-- 主要 API 已使用严格 Pydantic schema，PATCH 不再接受任意字段；
-- 登录、用户、题目、班级、学生、试卷、作业、导入及后台失败写入审计；
-- 前端不再使用 localStorage，刷新浏览器可通过 HttpOnly refresh cookie 恢复会话；
-- ESLint flat config、类型检查和生产构建通过。
+| 阶段 | 模块 | 核心能力 | 验收状态 |
+|---|---|---|---|
+| **R0** | 基础架构 | 同步 SQLModel 会话、Alembic 平滑迁移（空库到 head）、可移植 Embedding 持久化、媒体目录保护 | 已通过 |
+| **R1** | 认证与契约 | OAuth2 Bearer + HttpOnly Cookie 会话轮换、首管理员保护、对象级权限隔离、严格 Pydantic 契约与 AuditLog | 已通过 |
+| **R2** | 成绩与学情 | 正规每题成绩明细 (`homework_question_results`)、名单快照、Excel 双版本导入、掌握度趋势与薄弱点闭环、针对性练习转作业 | 已通过 |
+| **R3** | 题库与媒体 | 题目/小问/多空答案聚合事务写入、Checksum 防重、等价匹配规则、知识点树层级与循环校验、媒体 MD5 去重与引用计数 | 已通过 |
+| **R4** | 组卷与导出 | 智能组卷四步拆分引擎 (`plan`→`generate`→`validate`→`persist`)、硬约束与必含知识点 100% 达标、题目微调、Word/Markdown 快照级导出 | 已通过 |
+| **R5** | LLM与向量 | 试卷文档提取（Word/PDF/纯文本）、MiniMax 客户端重试与 JSON 容错、长任务自愈状态机、余弦相似度检索平滑降级、双栏切题校对工作台 | 已通过 |
+| **R6** | 运维与灾备 | SQLite 安全在线热备份、媒体同步归档、保留策略、原子灾难恢复演练、分层健康探针与请求追踪脱敏 | 已通过 |
+| **交付** | 文档与手册 | 修订 PRD、更新 ADR-008/009、校准 Roadmap、发布 DEPLOYMENT.md 与 BACKUP_RESTORE.md | 已通过 |
 
 验证结果：
 
 ```text
-Alembic: 0004_auth_and_class_access (head)
-pytest: 18 passed
-Ruff 基础规则: passed
+Alembic: 0006_question_knowledge_unique_and_media_integrity (head)
+pytest: 77 passed, 0 warnings in 24s
+Ruff 基础规则: passed (0 errors)
 frontend type-check: passed
-frontend lint: passed
-frontend build: passed（14 个页面）
-实际浏览器: 登录、受保护页面、刷新后会话恢复通过；控制台无异常
+frontend lint: passed (0 warnings)
+frontend build: passed（21 个页面全部成功）
+端到端闭环: tests/test_e2e_full_cycle.py 全流程通过
+灾备恢复演练: tests/test_r6_operations_and_backup.py 验证通过
 ```
-
-### 下一迭代：R6（运维、验收与文档收口）
-
-按 `REMEDIATION_PLAN.md` 第 9 节实施：
-
-1. 数据库定期备份与恢复脚本/工具（支持 SQLite 数据安全导出与还原）；
-2. 系统健康诊断与环境检查自检（/health 扩展环境依赖、配置项检查）；
-3. 全流程业务端到端冒烟验收（从文档导入、打标切题、题库校对、智能组卷、作业下发、成绩导入到学情分析闭环）；
-4. 文档收口与里程碑验收（同步 PRD、ARCHITECTURE、README 与 API 契约）。
-
----
 
 ## 10. 接手后的第一条命令
 

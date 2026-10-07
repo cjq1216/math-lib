@@ -13,6 +13,7 @@ from app.api.v1 import (
     papers,
     questions,
     students,
+    system,
     users,
 )
 from app.core.dependencies import require_admin, require_teacher_or_admin
@@ -81,4 +82,10 @@ api_router.include_router(
     prefix="/llm",
     tags=["llm"],
     dependencies=protected,
+)
+api_router.include_router(
+    system.router,
+    prefix="/system",
+    tags=["system"],
+    dependencies=admin_only,
 )

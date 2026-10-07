@@ -6,6 +6,8 @@ from typing import Optional
 
 from sqlmodel import JSON, Field, SQLModel
 
+from app.core.datetime_utils import utc_now
+
 
 class AuditLog(SQLModel, table=True):
     """操作日志"""
@@ -30,4 +32,4 @@ class AuditLog(SQLModel, table=True):
     ip_address: Optional[str] = Field(default=None, max_length=64)
     user_agent: Optional[str] = Field(default=None, max_length=512)
 
-    created_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+    created_at: datetime = Field(default_factory=utc_now, index=True)

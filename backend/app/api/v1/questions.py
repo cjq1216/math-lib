@@ -2,13 +2,13 @@
 
 import hashlib
 import json
-from datetime import datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlmodel import Session, func, select
 
 from app.core.database import get_session
+from app.core.datetime_utils import utc_now
 from app.core.dependencies import get_current_user
 from app.models.knowledge_point import KnowledgePoint
 from app.models.media import MediaResource, QuestionMedia
@@ -340,7 +340,7 @@ def update_question(
     if "stem" in raw_data or "options" in raw_data:
         question.checksum = compute_question_checksum(question.stem, question.options)
 
-    question.updated_at = datetime.utcnow()
+    question.updated_at = utc_now()
     session.add(question)
 
     # 4. 更新小问（全量替换）
@@ -468,7 +468,7 @@ def delete_question(
     if question is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="题目不存在")
     question.is_active = False
-    question.updated_at = datetime.utcnow()
+    question.updated_at = utc_now()
     session.add(question)
     add_audit_event(
         session,

@@ -1,6 +1,5 @@
 """班级、任课教师和班级学生路由。"""
 
-from datetime import datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
@@ -8,6 +7,7 @@ from sqlalchemy import or_
 from sqlmodel import Session, select
 
 from app.core.database import get_session
+from app.core.datetime_utils import utc_now
 from app.core.dependencies import (
     can_access_student,
     get_current_user,
@@ -175,7 +175,7 @@ def update_class(
 
     for field, value in updates.items():
         setattr(class_, field, value)
-    class_.updated_at = datetime.utcnow()
+    class_.updated_at = utc_now()
     session.add(class_)
     if class_.head_teacher_id is not None:
         relations = {
@@ -306,7 +306,7 @@ def add_student_to_class(
         relation = ClassStudent(class_id=class_.id, student_id=student_id)
     else:
         relation.left_at = None
-        relation.joined_at = datetime.utcnow()
+        relation.joined_at = utc_now()
     session.add(relation)
     add_audit_event(
         session,
@@ -335,7 +335,7 @@ def _set_class_active(
     if class_.is_active == next_active:
         return OkResponse()
     class_.is_active = next_active
-    class_.updated_at = datetime.utcnow()
+    class_.updated_at = utc_now()
     session.add(class_)
     add_audit_event(
         session,
@@ -390,7 +390,7 @@ def remove_student_from_class(
     ).first()
     if relation is None:
         raise HTTPException(status_code=404, detail="有效班级关联不存在")
-    relation.left_at = datetime.utcnow()
+    relation.left_at = utc_now()
     session.add(relation)
     add_audit_event(
         session,

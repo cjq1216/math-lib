@@ -10,12 +10,12 @@
 from __future__ import annotations
 
 import math
-from datetime import datetime
 from typing import Any
 
 from sqlmodel import Session, select
 
 from app.core.config import settings
+from app.core.datetime_utils import utc_now
 from app.models.question import Question
 from app.models.question_embedding import QuestionEmbedding
 
@@ -49,7 +49,7 @@ def save_question_embedding(
         record.embedding = vector
         record.dimensions = len(vector)
         record.model = target_model
-        record.updated_at = datetime.utcnow()
+        record.updated_at = utc_now()
     else:
         record = QuestionEmbedding(
             question_id=question_id,

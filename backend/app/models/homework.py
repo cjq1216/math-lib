@@ -8,6 +8,8 @@ from typing import Optional
 from sqlalchemy import UniqueConstraint
 from sqlmodel import JSON, Field, SQLModel
 
+from app.core.datetime_utils import utc_now
+
 
 class HomeworkType(str, Enum):
     """作业类型"""
@@ -59,8 +61,8 @@ class Homework(SQLModel, table=True):
 
     notes: Optional[str] = Field(default=None)
     created_by: Optional[int] = Field(default=None, foreign_key="users.id")
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=utc_now)
+    updated_at: datetime = Field(default_factory=utc_now)
 
 
 class HomeworkClass(SQLModel, table=True):
@@ -74,7 +76,7 @@ class HomeworkClass(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     homework_id: int = Field(foreign_key="homework.id", index=True, ondelete="CASCADE")
     class_id: int = Field(foreign_key="classes.id", index=True, ondelete="CASCADE")
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=utc_now)
 
 
 class HomeworkStudent(SQLModel, table=True):
@@ -89,7 +91,7 @@ class HomeworkStudent(SQLModel, table=True):
     homework_id: int = Field(foreign_key="homework.id", index=True, ondelete="CASCADE")
     student_id: int = Field(foreign_key="students.id", index=True, ondelete="CASCADE")
     class_id: Optional[int] = Field(default=None, foreign_key="classes.id", ondelete="SET NULL")
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=utc_now)
 
 
 class HomeworkResult(SQLModel, table=True):
@@ -128,8 +130,8 @@ class HomeworkResult(SQLModel, table=True):
     input_source: str = Field(default="manual", max_length=32)
 
     recorded_by: Optional[int] = Field(default=None, foreign_key="users.id")
-    recorded_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    recorded_at: datetime = Field(default_factory=utc_now)
+    updated_at: datetime = Field(default_factory=utc_now)
 
 
 class HomeworkQuestionResult(SQLModel, table=True):
@@ -156,4 +158,4 @@ class HomeworkQuestionResult(SQLModel, table=True):
 
     answer_text: Optional[str] = Field(default=None)
     time_spent_seconds: Optional[int] = Field(default=None)
-    recorded_at: datetime = Field(default_factory=datetime.utcnow)
+    recorded_at: datetime = Field(default_factory=utc_now)

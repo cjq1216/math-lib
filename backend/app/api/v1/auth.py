@@ -1,6 +1,6 @@
 """认证路由：初始化、登录、刷新、注销和当前用户。"""
 
-from datetime import datetime, timedelta
+from datetime import timedelta
 from typing import Annotated
 from uuid import uuid4
 
@@ -10,6 +10,7 @@ from sqlmodel import Session, select
 
 from app.core.config import settings
 from app.core.database import get_session
+from app.core.datetime_utils import utc_now
 from app.core.dependencies import AuthContext, get_auth_context, get_current_user
 from app.core.security import (
     create_access_token,
@@ -66,7 +67,7 @@ def _issue_session(
     auth_session = AuthSession(
         user_id=user.id,
         refresh_jti=refresh_jti,
-        expires_at=datetime.utcnow()
+        expires_at=utc_now()
         + timedelta(days=settings.jwt_refresh_token_expire_days),
         ip_address=request.client.host if request.client else None,
         user_agent=(request.headers.get("user-agent") or "")[:512] or None,
@@ -123,7 +124,7 @@ def login(
         session.commit()
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="用户已被禁用")
 
-    user.last_login_at = datetime.utcnow()
+    user.last_login_at = utc_now()
     session.add(user)
     access_token, refresh_token = _issue_session(session, user, request)
     add_audit_event(
@@ -210,13 +211,13 @@ def refresh(
         auth_session is None
         or auth_session.user_id != user_id
         or auth_session.revoked_at is not None
-        or auth_session.expires_at <= datetime.utcnow()
+        or auth_session.expires_at <= utc_now()
     ):
         _clear_refresh_cookie(response)
         raise _unauthorized("刷新会话已失效")
 
     if auth_session.refresh_jti != refresh_jti:
-        auth_session.revoked_at = datetime.utcnow()
+        auth_session.revoked_at = utc_now()
         session.add(auth_session)
         session.commit()
         _clear_refresh_cookie(response)
@@ -224,7 +225,7 @@ def refresh(
 
     user = session.get(User, user_id)
     if user is None or not user.is_active:
-        auth_session.revoked_at = datetime.utcnow()
+        auth_session.revoked_at = utc_now()
         session.add(auth_session)
         session.commit()
         _clear_refresh_cookie(response)
@@ -238,7 +239,7 @@ def refresh(
     )
     auth_session.refresh_jti = new_jti
     auth_session.expires_at = expires_at
-    auth_session.last_used_at = datetime.utcnow()
+    auth_session.last_used_at = utc_now()
     session.add(auth_session)
     access_token = create_access_token(
         subject=user.id,
@@ -258,7 +259,7 @@ def logout(
     session: Annotated[Session, Depends(get_session)],
 ) -> OkResponse:
     """撤销当前会话并清理 refresh cookie。"""
-    context.auth_session.revoked_at = datetime.utcnow()
+    context.auth_session.revoked_at = utc_now()
     session.add(context.auth_session)
     add_audit_event(
         session,

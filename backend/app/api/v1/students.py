@@ -1,7 +1,6 @@
 """学生录入、查询和 Excel 批量导入。"""
 
 import io
-from datetime import datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile, status
@@ -11,6 +10,7 @@ from sqlalchemy import or_
 from sqlmodel import Session, select
 
 from app.core.database import get_session
+from app.core.datetime_utils import utc_now
 from app.core.dependencies import (
     can_access_class,
     can_access_student,
@@ -55,7 +55,7 @@ def _join_student_to_class(session: Session, student_id: int, class_id: int) -> 
         session.add(ClassStudent(class_id=class_id, student_id=student_id))
     else:
         relation.left_at = None
-        relation.joined_at = datetime.utcnow()
+        relation.joined_at = utc_now()
         session.add(relation)
 
 
@@ -173,7 +173,7 @@ def update_student(
     updates = payload.model_dump(exclude_unset=True)
     for field, value in updates.items():
         setattr(student, field, value)
-    student.updated_at = datetime.utcnow()
+    student.updated_at = utc_now()
     session.add(student)
     add_audit_event(
         session,
@@ -249,7 +249,7 @@ async def import_students(
                 student.grade = grade
                 if "性别" in columns and row[columns["性别"]]:
                     student.gender = str(row[columns["性别"]])
-                student.updated_at = datetime.utcnow()
+                student.updated_at = utc_now()
                 session.add(student)
                 updated += 1
             else:
@@ -306,7 +306,7 @@ def enable_student(
     if student.is_active:
         return OkResponse()
     student.is_active = True
-    student.updated_at = datetime.utcnow()
+    student.updated_at = utc_now()
     session.add(student)
     add_audit_event(
         session,
@@ -330,7 +330,7 @@ def delete_student(
 ) -> OkResponse:
     """软删有权访问的学生。"""
     student.is_active = False
-    student.updated_at = datetime.utcnow()
+    student.updated_at = utc_now()
     session.add(student)
     add_audit_event(
         session,

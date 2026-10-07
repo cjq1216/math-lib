@@ -4,6 +4,8 @@ from datetime import datetime
 
 from sqlmodel import JSON, Field, SQLModel
 
+from app.core.datetime_utils import utc_now
+
 
 class QuestionEmbedding(SQLModel, table=True):
     """保存题目向量；相似度索引在后续迭代按数据库能力单独构建。"""
@@ -18,4 +20,4 @@ class QuestionEmbedding(SQLModel, table=True):
     embedding: list[float] = Field(sa_type=JSON)
     dimensions: int
     model: str = Field(max_length=128)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=utc_now)

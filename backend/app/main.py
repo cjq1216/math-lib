@@ -4,8 +4,9 @@ FastAPI 应用入口
 
 from contextlib import asynccontextmanager
 from pathlib import Path
+from typing import Any
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Response, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from loguru import logger
@@ -13,6 +14,8 @@ from loguru import logger
 from app.api.v1 import api_router
 from app.core.config import settings
 from app.core.database import init_db
+from app.middleware.request_logging import RequestLoggingMiddleware
+from app.services.health_service import check_liveness, check_readiness
 
 
 # 确保数据目录存在
@@ -29,6 +32,7 @@ def _ensure_data_dirs() -> None:
         media_root / "formula_images",
         Path(settings.log_file).parent,
         data_root / "exports",
+        Path(settings.backup_dir),
     ]
     for directory in dirs:
         directory.mkdir(parents=True, exist_ok=True)
@@ -104,6 +108,8 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app.add_middleware(RequestLoggingMiddleware)
+
 
 # 静态文件（媒体）
 app.mount(
@@ -117,9 +123,30 @@ app.include_router(api_router, prefix=settings.api_v1_prefix)
 
 
 @app.get("/health", tags=["health"])
-async def health() -> dict[str, str]:
-    """健康检查"""
-    return {"status": "ok", "app": settings.app_name}
+async def health() -> dict[str, Any]:
+    """综合健康检查（向后兼容）。"""
+    is_ready, _ = check_readiness()
+    return {
+        "status": "ok" if is_ready else "degraded",
+        "app": settings.app_name,
+        "live": True,
+        "ready": is_ready,
+    }
+
+
+@app.get("/health/live", tags=["health"])
+async def health_live() -> dict[str, Any]:
+    """存活探针 (Liveness Probe)：验证进程与事件循环处于正常响应状态。"""
+    return check_liveness()
+
+
+@app.get("/health/ready", tags=["health"])
+async def health_ready(response: Response) -> dict[str, Any]:
+    """就绪探针 (Readiness Probe)：验证数据库连通性及关键数据/媒体/日志/备份目录可写状态。"""
+    is_ready, details = check_readiness()
+    if not is_ready:
+        response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
+    return details
 
 
 if __name__ == "__main__":

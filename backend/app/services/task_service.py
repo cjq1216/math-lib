@@ -10,11 +10,12 @@ MVP 用 FastAPI BackgroundTasks 实现；后期切 Celery 改 base.py 即可。
 """
 
 import traceback
-from datetime import datetime
 from typing import Any, Callable
 
+from loguru import logger
 from sqlmodel import Session
 
+from app.core.datetime_utils import utc_now
 from app.models.background_task import BackgroundTask, TaskStatus, TaskType
 from app.models.user import User
 from app.services.audit_service import add_audit_event
@@ -49,10 +50,9 @@ def start_task(session: Session, task_id: int) -> None:
     if not task:
         return
     task.status = TaskStatus.RUNNING
-    task.started_at = datetime.utcnow()
     session.add(task)
     session.commit()
-
+    logger.info(f"[BackgroundTask #{task_id}] ({task.task_type.value}) 开始执行")
 
 def update_progress(
     session: Session,
@@ -84,10 +84,9 @@ def finish_task(
     task.status = TaskStatus.PARTIAL_SUCCESS if partial else TaskStatus.SUCCESS
     task.progress = 100
     task.result = result or {}
-    task.finished_at = datetime.utcnow()
     session.add(task)
     session.commit()
-
+    logger.info(f"[BackgroundTask #{task_id}] ({task.task_type.value}) 执行完成: {task.status.value}")
 def fail_task(
     session: Session,
     task_id: int,
@@ -100,7 +99,7 @@ def fail_task(
     task.status = TaskStatus.FAILED
     task.error_message = str(error)[:2000]
     task.error_traceback = traceback.format_exc()[:5000]
-    task.finished_at = datetime.utcnow()
+    task.finished_at = utc_now()
     session.add(task)
     actor = session.get(User, task.created_by) if task.created_by else None
     add_audit_event(
@@ -112,7 +111,10 @@ def fail_task(
         changes={"task_type": task.task_type.value, "error_type": type(error).__name__},
     )
     session.commit()
-
+    logger.error(
+        f"[BackgroundTask #{task_id}] ({task.task_type.value}) 任务失败: {error} | "
+        f"错误类型: {type(error).__name__}"
+    )
 
 def cancel_task(
     session: Session,
@@ -123,7 +125,7 @@ def cancel_task(
     if not task or task.status in (TaskStatus.SUCCESS, TaskStatus.PARTIAL_SUCCESS, TaskStatus.FAILED):
         return
     task.status = TaskStatus.CANCELLED
-    task.finished_at = datetime.utcnow()
+    task.finished_at = utc_now()
     session.add(task)
     session.commit()
 
@@ -141,7 +143,7 @@ def recover_orphaned_tasks(session: Session) -> int:
     for t in stale_tasks:
         t.status = TaskStatus.FAILED
         t.error_message = "服务重启导致任务中断，请重新提交。"
-        t.finished_at = datetime.utcnow()
+        t.finished_at = utc_now()
         session.add(t)
     if count > 0:
         session.commit()
@@ -181,9 +183,7 @@ async def run_async_task(
         with SessionLocal() as session:
             fail_task(session, task_id, e)
         # 不抛异常（后台任务不应影响主流程）
-        print(f"Task {task_id} failed: {e}")
-
-
+        logger.error(f"[BackgroundTask #{task_id}] 异步执行抛出未捕获异常: {e}")
 def schedule_task(
     background_tasks,
     session: Session,
